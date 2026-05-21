@@ -417,19 +417,42 @@ function bootWar() {
 // Warroom AI (backend OpenAI + tools)
 const esc = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
+function apiErrMessage(d, status) {
+  if(!d) return 'Request failed ('+status+')';
+  if(typeof d.message==='string') return d.message;
+  if(Array.isArray(d.message)) return d.message.map(e=>e.message||JSON.stringify(e)).join('; ');
+  if(d.error && typeof d.error==='string') return d.error;
+  return 'Request failed ('+status+')';
+}
+
+async function warroomFetch(path, body) {
+  const opts = {headers:ah()};
+  if(body) { opts.method='POST'; opts.body=JSON.stringify(body); }
+  let r, d, raw;
+  try {
+    r = await fetch(BASE+path, opts);
+    raw = await r.text();
+    d = raw ? JSON.parse(raw) : {};
+  } catch(e) {
+    if(e.message==='Failed to fetch') throw new Error('Network blocked — open the war room on Vercel (HTTPS), not as a local file.');
+    throw e;
+  }
+  return {r, d};
+}
+
 async function checkWarroomStatus() {
   if(!tok) return;
   try {
-    const r = await fetch(BASE+'/api/v1/admin/warroom/status',{headers:ah()});
+    const {r,d} = await warroomFetch('/api/v1/admin/warroom/status');
     if(r.status===401){logout();return;}
-    const d = await r.json();
     if(r.ok && d.success!==false) {
-      setEl('vmsg','AI assistant online. Ask about MRR, transactions, or system health.');
+      const model = d.data?.model || d.model;
+      setEl('vmsg', model ? 'AI online ('+model+'). Ask about MRR or transactions.' : 'AI assistant online. Ask about MRR, transactions, or system health.');
       return;
     }
-    setEl('vmsg','AI assistant unavailable. Dashboard metrics still load.');
-  } catch {
-    setEl('vmsg','Ask anything about Tekko revenue — AI will query live data.');
+    setEl('vmsg','AI offline: '+apiErrMessage(d,r.status));
+  } catch(e) {
+    setEl('vmsg', e.message || 'Could not reach warroom AI.');
   }
 }
 
@@ -502,15 +525,25 @@ function wave(on) {
 }
 
 function speak(text) {
-  if(!synth)return;
-  synth.cancel();
-  utt = new SpeechSynthesisUtterance(text);
-  utt.rate = 1.08;
-  utt.pitch = 0.95;
-  utt.onstart = () => wave(true);
-  utt.onend = () => wave(false);
-  synth.speak(utt);
+  if(!synth || !text?.trim()) return;
+  const say = () => {
+    synth.cancel();
+    utt = new SpeechSynthesisUtterance(text.trim());
+    utt.rate = 1.08;
+    utt.pitch = 0.95;
+    const voices = synth.getVoices();
+    const voice = voices.find(v=>v.lang.startsWith('en')) || voices[0];
+    if(voice) utt.voice = voice;
+    utt.onstart = () => wave(true);
+    utt.onend = () => wave(false);
+    utt.onerror = () => wave(false);
+    synth.speak(utt);
+    if(synth.paused) synth.resume();
+  };
+  if(synth.getVoices().length) say();
+  else synth.onvoiceschanged = () => { say(); synth.onvoiceschanged = null; };
 }
+if(synth) synth.onvoiceschanged = () => {};
 
 function stopSpeak() {
   if(synth) synth.cancel();
@@ -530,16 +563,11 @@ async function ask(q) {
   chatHistory.push({role:'user', content:message});
   if(chatHistory.length>CHAT_HIST_MAX) chatHistory.splice(0, chatHistory.length-CHAT_HIST_MAX);
   try {
-    const r = await fetch(BASE+'/api/v1/admin/warroom/chat',{
-      method:'POST',
-      headers:ah(),
-      body:JSON.stringify({message, history})
-    });
-    const d = await r.json();
+    const {r,d} = await warroomFetch('/api/v1/admin/warroom/chat',{message, history});
     if(r.status===401){chatHistory.pop();logout();return;}
     if(!r.ok || d.success===false) {
       chatHistory.pop();
-      throw new Error(d.message || 'Chat request failed');
+      throw new Error('AI chat ('+r.status+'): '+apiErrMessage(d,r.status));
     }
     const data = d.data || d;
     const reply = (data.reply || '').trim() || 'No reply from assistant.';
@@ -549,7 +577,9 @@ async function ask(q) {
     renderToolResults(data);
     speak(reply);
   } catch(e) {
-    setEl('vmsg', e.message || 'AI error — check connection and try again.');
+    const err = e.message || 'AI error — check connection and try again.';
+    setEl('vmsg', err);
+    speak(err.length > 180 ? 'AI request failed. See message on screen.' : err);
     wave(false);
   } finally {
     setChatBusy(false);
