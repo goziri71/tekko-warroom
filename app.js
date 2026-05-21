@@ -5,6 +5,8 @@ const BASE = 'https://zxchange.onrender.com';
 let tok = null, usr = null, charts = {}, feedTmr = null, sseSrc = null, sessTmr = null, warnTmr = null;
 let M = {mrr:0,today:0,users:0,churn:0,swap:0,gc:0,vc:0,tr:0,new_users:0,total_users:0,arr:0};
 let guardianData = {stuck:0,swapFail:0,fiatMiss:0,gcStuck:0,vcFail:0,trFail:0};
+let chatHistory = [], chatBusy = false;
+const CHAT_HIST_MAX = 20;
 
 // Formatters
 const ngn = v => v||v===0 ? '₦'+Number(v).toLocaleString('en-NG',{maximumFractionDigits:0}) : '—';
@@ -59,6 +61,7 @@ async function login() {
 
 function logout() {
   tok = null; usr = null;
+  chatHistory = []; chatBusy = false;
   clearInterval(feedTmr);clearTimeout(sessTmr);clearTimeout(warnTmr);
   if(sseSrc){sseSrc.close();sseSrc=null;}
   Object.values(charts).forEach(c=>{try{c.destroy();}catch(e){}});
@@ -71,6 +74,7 @@ function logout() {
   document.getElementById('lok').textContent='Session ended.';
   document.getElementById('lbtn').disabled=false;
   setEl('feed','');
+  renderToolResults(null);
 }
 
 // API
@@ -407,6 +411,62 @@ function bootWar() {
   setInterval(fetchAll,60000);
   startSSE();
   startSessionTimers();
+  checkWarroomStatus();
+}
+
+// Warroom AI (backend OpenAI + tools)
+const esc = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+async function checkWarroomStatus() {
+  if(!tok) return;
+  try {
+    const r = await fetch(BASE+'/api/v1/admin/warroom/status',{headers:ah()});
+    if(r.status===401){logout();return;}
+    const d = await r.json();
+    if(r.ok && d.success!==false) {
+      setEl('vmsg','AI assistant online. Ask about MRR, transactions, or system health.');
+      return;
+    }
+    setEl('vmsg','AI assistant unavailable. Dashboard metrics still load.');
+  } catch {
+    setEl('vmsg','Ask anything about Tekko revenue — AI will query live data.');
+  }
+}
+
+function setChatBusy(on) {
+  chatBusy = on;
+  ['vinp','mbtn'].forEach(id=>{const e=document.getElementById(id);if(e)e.disabled=on;});
+  document.querySelectorAll('.qb').forEach(b=>{b.disabled=on;});
+}
+
+function renderToolResults(data) {
+  const el = document.getElementById('vtools');
+  if(!el) return;
+  const tools = data?.tools_used;
+  const results = data?.tool_results;
+  if(!tools?.length) {
+    el.innerHTML = '';
+    el.classList.remove('show');
+    return;
+  }
+  let html = '<div class="vtags">'+tools.map(t=>'<span>'+esc(t)+'</span>').join('')+'</div>';
+  const addTable = (name, payload) => {
+    const rows = Array.isArray(payload) ? payload : payload?.rows || payload?.transactions || payload?.data;
+    if(!Array.isArray(rows) || !rows.length || typeof rows[0]!=='object') return;
+    const cols = Object.keys(rows[0]).slice(0,6);
+    html += '<div style="margin-top:6px;color:var(--g);font-size:8px;letter-spacing:0.06em">'+esc(name||'data')+'</div>';
+    html += '<table class="vtool-tbl"><thead><tr>'+cols.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr></thead><tbody>';
+    rows.slice(0,8).forEach(row=>{
+      html += '<tr>'+cols.map(c=>'<td>'+esc(row[c])+'</td>').join('')+'</tr>';
+    });
+    html += '</tbody></table>';
+  };
+  if(results && typeof results==='object') {
+    if(Array.isArray(results)) tools.forEach((t,i)=>addTable(t, results[i]));
+    else Object.entries(results).forEach(([name,payload])=>addTable(name, payload));
+  }
+  el.innerHTML = html;
+  el.classList.add('show');
 }
 
 // Voice Assistant
@@ -458,34 +518,44 @@ function stopSpeak() {
 }
 
 async function ask(q) {
-  if(!q?.trim())return;
+  if(!q?.trim()||chatBusy) return;
+  if(!tok) { setEl('vmsg','Session expired. Please log in again.'); return; }
+  const message = q.trim();
   document.getElementById('vinp').value = '';
-  setEl('vmsg','Analyzing...');
+  setChatBusy(true);
+  setEl('vmsg','Querying Tekko AI...');
+  renderToolResults(null);
   wave(true);
-  const sys = `You are Tekko's AI CFO assistant in the admin war room. Tekko is a Nigerian fintech super-app. Live data: Total MRR=${ngn(M.mrr)}, Today revenue=${ngn(M.today)}, Active users=${num(M.users)}, Churn=${M.churn}%, ARR=${ngn(M.arr)}, New users this month=${num(M.new_users)}, Swap MRR=${ngn(M.swap)}, Gift card MRR=${ngn(M.gc)}, Virtual card MRR=${ngn(M.vc)}, Transfer MRR=${ngn(M.tr)}. Guardian: stuck txns=${guardianData.stuck}, failed swaps=${guardianData.swapFail}. All NGN via Brais rates. Reply in 2-3 sharp punchy sentences. No markdown. Sound like a sharp Lagos fintech CFO.`;
+  const history = chatHistory.map(h=>({role:h.role, content:h.content}));
+  chatHistory.push({role:'user', content:message});
+  if(chatHistory.length>CHAT_HIST_MAX) chatHistory.splice(0, chatHistory.length-CHAT_HIST_MAX);
   try {
-    const r = await fetch('https://api.anthropic.com/v1/messages',{
+    const r = await fetch(BASE+'/api/v1/admin/warroom/chat',{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',
-        max_tokens:1000,
-        system:sys,
-        messages:[{role:'user',content:q}]
-      })
+      headers:ah(),
+      body:JSON.stringify({message, history})
     });
     const d = await r.json();
-    const txt = d.content?.map(b=>b.text||'').join('') || 'No response.';
-    setEl('vmsg',txt);
-    speak(txt);
+    if(r.status===401){chatHistory.pop();logout();return;}
+    if(!r.ok || d.success===false) {
+      chatHistory.pop();
+      throw new Error(d.message || 'Chat request failed');
+    }
+    const data = d.data || d;
+    const reply = (data.reply || '').trim() || 'No reply from assistant.';
+    chatHistory.push({role:'assistant', content:reply});
+    if(chatHistory.length>CHAT_HIST_MAX) chatHistory.splice(0, chatHistory.length-CHAT_HIST_MAX);
+    setEl('vmsg',reply);
+    renderToolResults(data);
+    speak(reply);
   } catch(e) {
-    setEl('vmsg','AI error.');
+    setEl('vmsg', e.message || 'AI error — check connection and try again.');
     wave(false);
+  } finally {
+    setChatBusy(false);
   }
 }
 
 function readAll() {
-  const s = `Tekko war room full report. Total MRR ${ngn(M.mrr)}. ARR ${ngn(M.arr)}. Today's revenue ${ngn(M.today)}. ${num(M.users)} active users, ${num(M.new_users)} new this month. Churn ${M.churn} percent. Swap leads at ${ngn(M.swap)}. Gift cards ${ngn(M.gc)}. Virtual cards ${ngn(M.vc)}. Transfers ${ngn(M.tr)}. Guardian status: ${guardianData.stuck===0&&guardianData.swapFail===0?'all systems nominal':'anomalies detected'}. All figures NGN via Brais rates.`;
-  setEl('vmsg',s);
-  speak(s);
+  ask('Give a full Tekko war room revenue brief: total MRR, ARR, revenue today, active users, churn, and MRR by product (swap, gift cards, virtual cards, transfers). Flag any guardian or transaction concerns.');
 }

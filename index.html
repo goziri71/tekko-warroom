@@ -162,12 +162,14 @@
           <div class="wb" id="w1" style="height:4px"></div><div class="wb" id="w2" style="height:9px"></div><div class="wb" id="w3" style="height:14px"></div><div class="wb" id="w4" style="height:10px"></div><div class="wb" id="w5" style="height:6px"></div><div class="wb" id="w6" style="height:12px"></div><div class="wb" id="w7" style="height:8px"></div><div class="wb" id="w8" style="height:4px"></div>
         </div>
         <div class="vmsg" id="vmsg">War room secured. Connecting to Tekko backend...</div>
+        <div class="vtools" id="vtools"></div>
         <div class="qs">
           <button class="qb" onclick="ask('What is total MRR right now?')">MRR</button>
           <button class="qb" onclick="ask('Which product earns the most?')">Top product</button>
           <button class="qb" onclick="ask('Full revenue summary')">Brief</button>
           <button class="qb" onclick="ask('Is churn a concern?')">Churn</button>
           <button class="qb" onclick="ask('Any stuck transactions?')">Guardian</button>
+          <button class="qb" onclick="ask('Any transactions today? Give examples.')">Today</button>
         </div>
         <input class="vinp" id="vinp" placeholder="Ask anything about Tekko revenue..." onkeydown="if(event.key==='Enter')ask(this.value)">
         <div class="brow">
