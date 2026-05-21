@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tekko Revenue War Room</title>
+<meta name="description" content="Tekko admin revenue intelligence dashboard">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+<div id="sl" class="screen active">
+  <div class="login-wrap">
+    <div class="lscan"></div>
+    <div class="l-logo">Tekko</div>
+    <div class="l-sub">Revenue War Room · Admin Only</div>
+    <div class="l-card">
+      <label class="l-lbl">Admin email</label>
+      <input class="l-inp" id="le" type="email" placeholder="admin@tekko.com" autocomplete="email">
+      <label class="l-lbl">Password</label>
+      <input class="l-inp" id="lp" type="password" placeholder="••••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()">
+      <div class="twofa-wrap" id="t2w">
+        <label class="l-lbl">2FA code</label>
+        <input class="l-inp" id="l2" type="text" maxlength="6" placeholder="6-digit code" style="letter-spacing:0.3em;font-size:16px" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')login()">
+      </div>
+      <button class="l-btn" id="lbtn" onclick="login()">Authenticate</button>
+      <div class="l-err" id="lerr"></div>
+      <div class="l-ok" id="lok"></div>
+    </div>
+    <div class="l-note">admin or super_admin · 2FA required · 15 min session</div>
+  </div>
+</div>
+
+<div id="sw" class="screen">
+<div class="war">
+  <div class="wscan"></div>
+  <div class="mflash" id="mf"></div>
+
+  <div class="topbar">
+    <div class="tlogo">Tekko · Revenue War Room</div>
+    <div class="tright">
+      <div class="upill"><span class="udot"></span><span id="upill-txt">—</span></div>
+      <div class="tclock" id="clk">--:--:--</div>
+      <button class="lout-btn" onclick="logout()">LOGOUT</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="goTab('overview',this)">Overview</button>
+    <button class="tab" onclick="goTab('swap',this)">Swap</button>
+    <button class="tab" onclick="goTab('giftcard',this)">Gift Cards</button>
+    <button class="tab" onclick="goTab('virtualcard',this)">Virtual Cards</button>
+    <button class="tab" onclick="goTab('transfers',this)">Transfers</button>
+    <button class="tab" onclick="goTab('wallet',this)">Wallet</button>
+    <button class="tab" onclick="goTab('users',this)">Users</button>
+    <button class="tab" onclick="goTab('guardian',this)">&#9632; Guardian</button>
+  </div>
+
+  <div class="mstrip" id="mstrip">
+    <div class="mc"><div class="ml">Total MRR</div><div class="mv" id="m0">—</div><div class="ms" id="m0s">loading...</div><div class="mbar" id="mb0" style="width:0"></div></div>
+    <div class="mc"><div class="ml">Revenue today</div><div class="mv" id="m1">—</div><div class="ms" id="m1s">loading...</div><div class="mbar" id="mb1" style="width:0"></div></div>
+    <div class="mc"><div class="ml">Active users</div><div class="mv" id="m2">—</div><div class="ms" id="m2s">loading...</div><div class="mbar" id="mb2" style="width:0"></div></div>
+    <div class="mc"><div class="ml">Churn rate</div><div class="mv" id="m3">—</div><div class="ms" id="m3s">loading...</div><div class="mbar" id="mb3" style="width:0;background:var(--r)"></div></div>
+  </div>
+
+  <div class="alerts">
+    <div class="abar red" id="a-churn">&#9650; CHURN ALERT — rate exceeded 5%. Review retention now.</div>
+    <div class="abar amber" id="a-partial">&#9651; PARTIAL DATA — some backend queries failed. Numbers may be incomplete.</div>
+    <div class="abar red" id="a-health">&#9632; SYSTEM ALERT — backend health check failed.</div>
+    <div class="abar red" id="a-stuck">&#9632; GUARDIAN — stuck transactions detected. Check the Guardian tab.</div>
+    <div class="abar amber" id="a-token">&#9651; SESSION — token expiring soon. Re-login to stay connected.</div>
+  </div>
+
+  <div class="bgrid">
+    <div class="lc">
+
+      <div class="panel active" id="p-overview">
+        <div class="shd">Revenue by product · NGN via Brais rates</div>
+        <div class="cw" style="height:150px"><canvas id="c-donut"></canvas></div>
+        <div class="shd">MRR trend · 12 months</div>
+        <div class="cw" style="height:110px"><canvas id="c-trend"></canvas></div>
+      </div>
+
+      <div class="panel" id="p-swap">
+        <div class="shd">Swap metrics</div>
+        <div class="kv-grid" id="kv-swap"></div>
+        <div class="shd">Top pairs · volume &amp; fees</div>
+        <table class="tbl" id="tbl-swap"><thead><tr><th>Pair</th><th>Volume</th><th>Fees</th><th>Count</th></tr></thead><tbody></tbody></table>
+        <div class="shd">Hourly volume · today</div>
+        <div class="cw" style="height:100px"><canvas id="c-swap-hourly"></canvas></div>
+      </div>
+
+      <div class="panel" id="p-giftcard">
+        <div class="shd">Gift card metrics</div>
+        <div class="kv-grid" id="kv-gc"></div>
+        <div class="shd">Top cards · volume &amp; margin</div>
+        <table class="tbl" id="tbl-gc"><thead><tr><th>Brand</th><th>Count</th><th>Volume</th><th>Margin</th></tr></thead><tbody></tbody></table>
+        <div class="shd">Status breakdown</div>
+        <div class="cw" style="height:90px"><canvas id="c-gc-status"></canvas></div>
+      </div>
+
+      <div class="panel" id="p-virtualcard">
+        <div class="shd">Virtual card metrics</div>
+        <div class="kv-grid" id="kv-vc"></div>
+        <div class="shd">Revenue by type</div>
+        <div class="cw" style="height:110px"><canvas id="c-vc-rev"></canvas></div>
+      </div>
+
+      <div class="panel" id="p-transfers">
+        <div class="shd">Transfer metrics</div>
+        <div class="kv-grid" id="kv-tr"></div>
+        <div class="shd">Revenue by type</div>
+        <div class="cw" style="height:110px"><canvas id="c-tr-rev"></canvas></div>
+      </div>
+
+      <div class="panel" id="p-wallet">
+        <div class="shd">Wallet overview</div>
+        <div class="kv-grid" id="kv-wallet"></div>
+        <div class="shd">Currency split</div>
+        <div class="cw" style="height:110px"><canvas id="c-wallet"></canvas></div>
+      </div>
+
+      <div class="panel" id="p-users">
+        <div class="shd">User growth</div>
+        <div class="kv-grid" id="kv-users"></div>
+        <div class="shd">Growth · 12 months</div>
+        <div class="cw" style="height:120px"><canvas id="c-users"></canvas></div>
+      </div>
+
+      <div class="panel" id="p-guardian">
+        <div class="shd">System guardian · live health</div>
+        <div class="guardian">
+          <div class="g-title">Transaction health</div>
+          <div class="g-item"><span>Stuck transactions (&gt;10 min)</span><span class="g-badge g-ok" id="g-stuck">checking...</span></div>
+          <div class="g-item"><span>Failed swaps (fiat taken, crypto not sent)</span><span class="g-badge g-ok" id="g-swap-fail">checking...</span></div>
+          <div class="g-item"><span>Missing fiat (crypto received, fiat not paid)</span><span class="g-badge g-ok" id="g-fiat-miss">checking...</span></div>
+          <div class="g-item"><span>Gift cards pending &gt;30 min)</span><span class="g-badge g-ok" id="g-gc-stuck">checking...</span></div>
+          <div class="g-item"><span>Virtual card fund failures (last hour)</span><span class="g-badge g-ok" id="g-vc-fail">checking...</span></div>
+          <div class="g-item"><span>Failed transfers (last hour)</span><span class="g-badge g-ok" id="g-tr-fail">checking...</span></div>
+        </div>
+        <div class="guardian">
+          <div class="g-title">System health</div>
+          <div class="g-item"><span>API response</span><span class="g-badge g-ok" id="g-api">checking...</span></div>
+          <div class="g-item"><span>Database</span><span class="g-badge g-ok" id="g-db">checking...</span></div>
+          <div class="g-item"><span>Swap engine</span><span class="g-badge g-ok" id="g-se">checking...</span></div>
+          <div class="g-item"><span>Card processor</span><span class="g-badge g-ok" id="g-cp">checking...</span></div>
+          <div class="g-item"><span>SSE stream</span><span class="g-badge g-ok" id="g-sse">checking...</span></div>
+        </div>
+        <div class="shd">Recent failures</div>
+        <div id="g-feed" style="font-size:10px;color:var(--g3)">Monitoring...</div>
+      </div>
+
+    </div>
+
+    <div class="rc">
+      <div class="feed">
+        <div class="shd" style="margin-bottom:6px">Live transactions</div>
+        <div id="feed"></div>
+      </div>
+      <div class="vzone">
+        <div class="wf" id="wf">
+          <div class="wb" id="w1" style="height:4px"></div><div class="wb" id="w2" style="height:9px"></div><div class="wb" id="w3" style="height:14px"></div><div class="wb" id="w4" style="height:10px"></div><div class="wb" id="w5" style="height:6px"></div><div class="wb" id="w6" style="height:12px"></div><div class="wb" id="w7" style="height:8px"></div><div class="wb" id="w8" style="height:4px"></div>
+        </div>
+        <div class="vmsg" id="vmsg">War room secured. Connecting to Tekko backend...</div>
+        <div class="qs">
+          <button class="qb" onclick="ask('What is total MRR right now?')">MRR</button>
+          <button class="qb" onclick="ask('Which product earns the most?')">Top product</button>
+          <button class="qb" onclick="ask('Full revenue summary')">Brief</button>
+          <button class="qb" onclick="ask('Is churn a concern?')">Churn</button>
+          <button class="qb" onclick="ask('Any stuck transactions?')">Guardian</button>
+        </div>
+        <input class="vinp" id="vinp" placeholder="Ask anything about Tekko revenue..." onkeydown="if(event.key==='Enter')ask(this.value)">
+        <div class="brow">
+          <button class="vbtn" id="mbtn" onclick="toggleMic()">&#9679; SPEAK</button>
+          <button class="vbtn" onclick="readAll()">&#9654; ALL</button>
+          <button class="vbtn" onclick="stopSpeak()">&#9632; STOP</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sbot">
+    <div class="sb"><div class="sbl">Swap MRR</div><div class="sbv" id="sb0">—</div></div>
+    <div class="sb"><div class="sbl">Giftcard MRR</div><div class="sbv" id="sb1">—</div></div>
+    <div class="sb"><div class="sbl">Virtual card MRR</div><div class="sbv" id="sb2">—</div></div>
+    <div class="sb"><div class="sbl">Transfer MRR</div><div class="sbv" id="sb3">—</div></div>
+  </div>
+
+  <div class="srow">
+    <div class="cpill demo" id="cpill">&#9675; CONNECTING...</div>
+    <div class="hdots">
+      <div class="hd"><div class="hdl spin" id="h-api"></div>API</div>
+      <div class="hd"><div class="hdl spin" id="h-db"></div>DB</div>
+      <div class="hd"><div class="hdl spin" id="h-swap"></div>SWAP</div>
+      <div class="hd"><div class="hdl spin" id="h-cards"></div>CARDS</div>
+      <div class="hd"><div class="hdl spin" id="h-sse"></div>SSE</div>
+    </div>
+    <button class="rbtn" onclick="fetchAll()">&#8635; REFRESH</button>
+  </div>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>
