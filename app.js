@@ -29,24 +29,20 @@ async function login() {
   const btn = document.getElementById('lbtn');
   errEl.textContent = '';
   if(!e||!p) {errEl.textContent='Email and password required.';return;}
+  if(!t||!/^\d{6}$/.test(t)) {errEl.textContent='Enter your 6-digit 2FA code.';document.getElementById('l2').focus();return;}
   btn.disabled = true;
   okEl.textContent = 'Authenticating...';
-  const body = {email:e, password:p};
-  if(t) body.twoFactorToken = t;
+  const body = {email:e, password:p, twoFactorToken:t};
   try {
     const r = await fetch(BASE+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d = await r.json();
     if(!r.ok || !d.success) {
       const msg = d.message || 'Login failed';
-      if(/2fa|two.factor|factor|otp/i.test(msg)) {
-        document.getElementById('t2w').classList.add('show');
-        okEl.textContent='';
-        errEl.textContent='Enter your 2FA code above';
-        document.getElementById('l2').focus();
-      } else {
-        errEl.textContent=msg;
-        okEl.textContent='';
-      }
+      errEl.textContent = /2fa|two.factor|factor|otp|invalid.*code/i.test(msg)
+        ? 'Invalid 2FA code. Check your authenticator app and try again.'
+        : msg;
+      okEl.textContent = '';
+      if(/2fa|two.factor|factor|otp|invalid.*code/i.test(msg)) document.getElementById('l2').focus();
       btn.disabled=false;
       return;
     }
@@ -74,7 +70,6 @@ function logout() {
   document.getElementById('lerr').textContent='';
   document.getElementById('lok').textContent='Session ended.';
   document.getElementById('lbtn').disabled=false;
-  document.getElementById('t2w').classList.remove('show');
   setEl('feed','');
 }
 

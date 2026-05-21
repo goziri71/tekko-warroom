@@ -13,7 +13,7 @@ body{font-family:'Courier New',monospace;background:#000;margin:0;padding:20px}
 .l-inp{width:100%;background:var(--g5);border:1px solid var(--bd);border-radius:8px;color:var(--g);font-family:'Courier New',monospace;font-size:13px;padding:9px 12px;outline:none;transition:border 0.2s}
 .l-inp::placeholder{color:rgba(0,255,180,0.18)}
 .l-inp:focus{border-color:var(--g3)}
-.twofa-wrap{display:none;margin-top:14px}.twofa-wrap.show{display:block}
+.twofa-wrap{margin-top:14px}
 .l-btn{width:100%;padding:11px;border-radius:8px;border:1px solid var(--g);background:rgba(0,255,180,0.08);color:var(--g);font-family:'Courier New',monospace;font-size:12px;cursor:pointer;letter-spacing:0.1em;text-transform:uppercase;transition:all 0.2s;margin-top:16px}
 .l-btn:hover{background:rgba(0,255,180,0.18)}.l-btn:disabled{opacity:0.35;cursor:not-allowed}
 .l-err{font-size:11px;color:var(--r);margin-top:8px;text-align:center;min-height:14px}

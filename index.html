@@ -20,8 +20,8 @@
       <label class="l-lbl">Password</label>
       <input class="l-inp" id="lp" type="password" placeholder="••••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()">
       <div class="twofa-wrap" id="t2w">
-        <label class="l-lbl">2FA code</label>
-        <input class="l-inp" id="l2" type="text" maxlength="6" placeholder="6-digit code" style="letter-spacing:0.3em;font-size:16px" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')login()">
+        <label class="l-lbl" for="l2">2FA code</label>
+        <input class="l-inp" id="l2" name="twoFactorToken" type="text" inputmode="numeric" maxlength="6" placeholder="6-digit code" style="letter-spacing:0.3em;font-size:16px" autocomplete="one-time-code" required onkeydown="if(event.key==='Enter')login()">
       </div>
       <button class="l-btn" id="lbtn" onclick="login()">Authenticate</button>
       <div class="l-err" id="lerr"></div>
