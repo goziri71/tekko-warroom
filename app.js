@@ -7,6 +7,8 @@ let M = {mrr:0,today:0,users:0,churn:0,swap:0,gc:0,vc:0,tr:0,new_users:0,total_u
 let guardianData = {stuck:0,swapFail:0,fiatMiss:0,gcStuck:0,vcFail:0,trFail:0};
 let chatHistory = [], chatBusy = false;
 const CHAT_HIST_MAX = 20;
+let warroomStatus = { enabled: true, webResearch: false, model: null };
+const RESEARCH_TRIGGER_RE = /search\s+(the\s+)?(internet|web|online)|search\s+(the\s+)?net|search\s+online|web\s+search|look\s+(it\s+)?up\s+online|google\s+(this|it|for)|browse\s+the\s+(web|internet)|surge\s+the\s+internet|research\s+online/i;
 
 // Formatters
 const ngn = v => v||v===0 ? '₦'+Number(v).toLocaleString('en-NG',{maximumFractionDigits:0}) : '—';
@@ -73,6 +75,7 @@ function logout() {
   stopAlwaysListen();
   tok = null; usr = null;
   chatHistory = []; chatBusy = false;
+  warroomStatus = { enabled: true, webResearch: false, model: null };
   clearInterval(feedTmr);clearTimeout(sessTmr);clearTimeout(warnTmr);
   if(sseSrc){sseSrc.close();sseSrc=null;}
   Object.values(charts).forEach(c=>{try{c.destroy();}catch(e){}});
@@ -436,9 +439,14 @@ const esc = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
 function apiErrMessage(d, status) {
   if(!d) return 'Request failed ('+status+')';
   if(typeof d.message==='string') return d.message;
+  if(typeof d.error==='string') return d.error;
+  if(typeof d.error?.message==='string') return d.error.message;
   if(Array.isArray(d.message)) return d.message.map(e=>e.message||JSON.stringify(e)).join('; ');
-  if(d.error && typeof d.error==='string') return d.error;
   return 'Request failed ('+status+')';
+}
+
+function modeLabel(mode) {
+  return mode === 'research' ? 'WEB' : mode === 'tekko' ? 'TEKKO' : 'AUTO';
 }
 
 async function warroomFetch(path, body) {
@@ -456,14 +464,48 @@ async function warroomFetch(path, body) {
   return {r, d};
 }
 
+function resolveChatMode(message, modeOverride) {
+  if(modeOverride === 'research' && !warroomStatus.webResearch) return 'auto';
+  if(modeOverride) return modeOverride;
+  if(warroomStatus.webResearch && RESEARCH_TRIGGER_RE.test(message)) return 'research';
+  return 'auto';
+}
+
+function updateWarroomUi() {
+  const webBtn = document.getElementById('qb-web');
+  const hint = document.getElementById('vhint');
+  const vzone = document.querySelector('.vzone');
+  if(webBtn) {
+    webBtn.style.display = warroomStatus.webResearch ? '' : 'none';
+    webBtn.disabled = !warroomStatus.enabled;
+  }
+  if(vzone) vzone.classList.toggle('web-ready', warroomStatus.webResearch && warroomStatus.enabled);
+  if(hint) {
+    hint.innerHTML = warroomStatus.webResearch
+      ? 'Say <strong>TEK-ko · WAR · ROOM</strong> or <strong>ACTIVATE</strong>. Say <strong>search the internet</strong> + question for web. <strong>Web</strong> / <strong>SPEAK</strong>.'
+      : 'Say <strong>TEK-ko · WAR · ROOM</strong> or <strong>ACTIVATE</strong>. <strong>SPEAK</strong> = manual command.';
+  }
+}
+
 async function checkWarroomStatus() {
   if(!tok) return;
   try {
     const {r,d} = await warroomFetch('/api/v1/admin/warroom/status');
     if(r.status===401){logout();return;}
+    const data = d.data || d;
     if(r.ok && d.success!==false) {
-      const model = d.data?.model || d.model;
-      setEl('vmsg', model ? 'AI online ('+model+'). Use TEST SPEECH, then ask below.' : 'AI online. Use TEST SPEECH next to the ask box, then type a question.');
+      warroomStatus.enabled = data.enabled !== false;
+      warroomStatus.webResearch = !!(data.web_research?.enabled);
+      warroomStatus.model = data.model || null;
+      updateWarroomUi();
+      if(!warroomStatus.enabled) {
+        setEl('vmsg', 'AI offline.');
+        return;
+      }
+      let msg = warroomStatus.model ? 'AI online ('+warroomStatus.model+').' : 'AI online.';
+      if(warroomStatus.webResearch) msg += ' Say “search the internet” for web.';
+      else msg += ' Tekko data only.';
+      setEl('vmsg', msg);
       return;
     }
     setEl('vmsg','AI offline: '+apiErrMessage(d,r.status));
@@ -939,24 +981,33 @@ function testSpeech() {
   else synth.onvoiceschanged = () => { run(); synth.onvoiceschanged = null; };
 }
 
-async function ask(q) {
+async function ask(q, modeOverride) {
   if(!q?.trim()||chatBusy) return;
   if(!tok) { setEl('vmsg','Session expired. Please log in again.'); return; }
+  if(!warroomStatus.enabled) {
+    setEl('vmsg', 'AI offline. Check warroom status.');
+    return;
+  }
   pauseRecog();
   listening = false;
   clearSttSilenceTimer();
   setMicUi(false);
   const message = q.trim();
+  let mode = resolveChatMode(message, modeOverride);
+  if(mode === 'research' && !warroomStatus.webResearch) mode = 'auto';
   clearSttUi();
   setChatBusy(true);
-  setEl('vmsg','Querying Tekko AI...');
+  const modeTag = mode !== 'auto' ? ' ['+modeLabel(mode)+']' : '';
+  setEl('vmsg', (mode === 'research' ? 'Searching the web…' : mode === 'tekko' ? 'Querying Tekko data…' : 'Querying AI…') + modeTag);
   renderToolResults(null);
   wave(true);
   const history = chatHistory.map(h=>({role:h.role, content:h.content}));
   chatHistory.push({role:'user', content:message});
   if(chatHistory.length>CHAT_HIST_MAX) chatHistory.splice(0, chatHistory.length-CHAT_HIST_MAX);
+  const body = { message, history };
+  if(mode && mode !== 'auto') body.mode = mode;
   try {
-    const {r,d} = await warroomFetch('/api/v1/admin/warroom/chat',{message, history});
+    const {r,d} = await warroomFetch('/api/v1/admin/warroom/chat', body);
     if(r.status===401){chatHistory.pop();logout();return;}
     if(!r.ok || d.success===false) {
       chatHistory.pop();
@@ -964,9 +1015,10 @@ async function ask(q) {
     }
     const data = d.data || d;
     const reply = (data.reply || '').trim() || 'No reply from assistant.';
+    const resMode = data.mode || mode;
     chatHistory.push({role:'assistant', content:reply});
     if(chatHistory.length>CHAT_HIST_MAX) chatHistory.splice(0, chatHistory.length-CHAT_HIST_MAX);
-    setEl('vmsg',reply);
+    setEl('vmsg', (resMode && resMode !== 'auto' ? '['+modeLabel(resMode)+'] ' : '') + reply);
     renderToolResults(data);
     speak(reply, () => setChatBusy(false));
   } catch(e) {
@@ -976,6 +1028,20 @@ async function ask(q) {
   }
 }
 
+function askResearch(q) {
+  if(!warroomStatus.webResearch) {
+    setEl('vmsg', 'Web search not enabled on server.');
+    speak('Web search is not available.');
+    return;
+  }
+  const text = (q || document.getElementById('vinp')?.value || '').trim();
+  if(!text) {
+    setEl('vmsg', 'Say or type your question, e.g. search the internet for …');
+    return;
+  }
+  ask(text, 'research');
+}
+
 function readAll() {
-  ask('Give a full Tekko war room revenue brief: total MRR, ARR, revenue today, active users, churn, and MRR by product (swap, gift cards, virtual cards, transfers). Flag any guardian or transaction concerns.');
+  ask('Give a full Tekko war room revenue brief: total MRR, ARR, revenue today, active users, churn, and MRR by product (swap, gift cards, virtual cards, transfers). Flag any guardian or transaction concerns.', 'tekko');
 }

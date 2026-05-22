@@ -102,6 +102,8 @@ body{font-family:'Courier New',monospace;background:#000;margin:0;padding:20px}
 .qs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px}
 .qb{padding:3px 7px;border-radius:20px;border:1px solid var(--bd);background:transparent;color:var(--g3);font-family:'Courier New',monospace;font-size:9px;cursor:pointer;white-space:nowrap;transition:all 0.2s}
 .qb:hover{color:var(--g);border-color:var(--g3);background:var(--g5)}
+.qb-web{border-color:rgba(100,180,255,0.35);color:rgba(140,200,255,0.85)}
+.vzone.web-ready .qb-web{box-shadow:0 0 8px rgba(100,180,255,0.12)}
 .wf{display:flex;align-items:center;gap:2px;height:14px;margin-bottom:6px}
 .wb{width:3px;border-radius:2px;background:var(--g);opacity:0.35}
 .wb.on{opacity:1;animation:wv 0.5s infinite alternate}

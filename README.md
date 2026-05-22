@@ -64,6 +64,10 @@ Your Fastify backend must have these endpoints:
 - `GET /api/v1/admin/metrics/users` — User growth & retention
 - `GET /api/v1/admin/metrics/health` — System health check
 - `GET /api/v1/admin/metrics/stream` — SSE live stream (query param: `access_token`)
+- `GET /api/v1/admin/warroom/status` — AI + `web_research.enabled` flags
+- `POST /api/v1/admin/warroom/chat` — AI chat (`message`, optional `history`, optional `mode`)
+
+Warroom chat `mode`: `auto` (default), `tekko` (MRR/transactions only), `research` (web search). Say **“search the internet”** + your question, or tap **Web**.
 
 All `/metrics/*` endpoints require:
 - `Authorization: Bearer <token>` header
@@ -81,6 +85,7 @@ All `/metrics/*` endpoints require:
 
 ## Voice Commands
 
+- "Search the internet …" — web research (when enabled on backend)
 - "What is my current MRR?"
 - "Which product earns the most?"
 - "Give me a full revenue summary"

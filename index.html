@@ -170,6 +170,7 @@
           <button class="qb" onclick="ask('Is churn a concern?')">Churn</button>
           <button class="qb" onclick="ask('Any stuck transactions?')">Guardian</button>
           <button class="qb" onclick="ask('Any transactions today? Give examples.')">Today</button>
+          <button class="qb qb-web" id="qb-web" onclick="askResearch()" style="display:none" title="Web search (mode: research)">&#127760; Web</button>
         </div>
         <div class="ask-row">
           <input class="vinp" id="vinp" placeholder="Ask anything… or click SPEAK and talk" onkeydown="if(event.key==='Enter'){stopListening();ask(this.value);}">
