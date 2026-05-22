@@ -176,8 +176,9 @@
           <button type="button" class="vbtn vbtn-test" id="vtest" onclick="testSpeech()" title="Play a test phrase — no API call">&#9835; TEST SPEECH</button>
         </div>
         <div class="vlive" id="vlive"></div>
-        <div class="vhint" id="vhint">Always on: say <strong>Tekko war room</strong> — it replies, then take your command. <strong>SPEAK</strong> = manual.</div>
+        <div class="vhint" id="vhint">Say <strong>TEK-ko · WAR · ROOM</strong> (three beats) or tap <strong>ACTIVATE</strong>. <strong>SPEAK</strong> = manual command.</div>
         <div class="brow">
+          <button type="button" class="vbtn vbtn-wake" onclick="activateAssistant()" title="Start assistant without wake phrase">&#9673; ACTIVATE</button>
           <button class="vbtn" id="mbtn" onclick="toggleMic()">&#9679; SPEAK</button>
           <button class="vbtn" onclick="readAll()">&#9654; ALL</button>
           <button class="vbtn" onclick="stopSpeak()">&#9632; STOP</button>

@@ -514,15 +514,99 @@ let utt = null, recog = null, listening = false, sttFinal = '', sttSilenceTmr = 
 let sttMode = 'off', wakeEnabled = false, wakeArmed = false, wakeBuffer = '', wakeCooldown = false;
 const STT_SILENCE_MS = 2500;
 const WAKE_GREETING = 'Tekko war room online. What would you like to know?';
+const WAKE_SCORE_TRIGGER = 0.72;
+const TEKKO_WORDS = ['tekko','techo','tico','tako','techno','deco','teco','takeo'];
+const WAR_WORDS = ['war','wor','bar','more','word','wars'];
+const ROOM_WORDS = ['room','rum','boom','rome','womb','rooms','roam'];
+const WAKE_REGEX = /tekko\s*war\s*room|tekko\s*warroom|techo\s*war\s*room|tico\s*war\s*room|taco\s*war\s*room|techno\s*war\s*room|echo\s*war\s*room/i;
 
-function hasWakePhrase(t) {
-  const s = (t||'').toLowerCase();
-  if(/tekko\s*war\s*room|tekko\s*warroom|techo\s*war\s*room|tico\s*war\s*room/i.test(s)) return true;
-  return s.includes('tekko') && (s.includes('war room') || s.includes('warroom'));
+function normText(t) {
+  return (t||'').toLowerCase().replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
 }
 
+function lev(a, b) {
+  if(!a || !b) return 99;
+  const m = [];
+  for(let i = 0; i <= b.length; i++) m[i] = [i];
+  for(let j = 0; j <= a.length; j++) m[0][j] = j;
+  for(let i = 1; i <= b.length; i++) {
+    for(let j = 1; j <= a.length; j++) {
+      m[i][j] = b[i-1] === a[j-1] ? m[i-1][j-1] : 1 + Math.min(m[i-1][j-1], m[i][j-1], m[i-1][j]);
+    }
+  }
+  return m[b.length][a.length];
+}
+
+function nearWord(w, list, maxDist) {
+  if(!w || w.length < 2) return false;
+  return list.some(a => w === a || w.includes(a) || a.includes(w) || lev(w, a) <= maxDist);
+}
+
+function wakeMatchScore(text) {
+  const s = normText(text);
+  if(!s) return 0;
+  if(WAKE_REGEX.test(s)) return 1;
+  const words = s.split(' ').filter(Boolean);
+  if(words.length < 2) return 0;
+  let best = 0;
+  for(let i = 0; i < words.length; i++) {
+    for(let len = 2; len <= 7 && i + len <= words.length; len++) {
+      const slice = words.slice(i, i + len);
+      const hasTekko = slice.some((w, idx) => idx <= 2 && nearWord(w, TEKKO_WORDS, 2));
+      const hasWar = slice.some((w, idx) => idx >= 1 && nearWord(w, WAR_WORDS, 1));
+      const hasRoom = slice.some((w, idx) => idx >= 1 && nearWord(w, ROOM_WORDS, 1));
+      if(hasTekko && hasWar && hasRoom) best = Math.max(best, 1);
+      else if(hasTekko && (hasWar || hasRoom)) best = Math.max(best, 0.78);
+      else if(hasTekko && len >= 3) best = Math.max(best, 0.45);
+    }
+  }
+  if(s.includes('war') && s.includes('room') && nearWord(words[0]||'', TEKKO_WORDS, 3)) best = Math.max(best, 0.85);
+  return best;
+}
+
+function hasWakePhrase(t) { return wakeMatchScore(t) >= WAKE_SCORE_TRIGGER; }
+
 function stripWakePhrase(t) {
-  return t.replace(/tekko\s*war\s*room|tekko\s*warroom|techo\s*war\s*room/gi, ' ').replace(/\s+/g, ' ').trim();
+  let s = normText(t);
+  s = s.replace(/tekko\s*war\s*room|tekko\s*warroom|techo\s*war\s*room|tico\s*war\s*room|taco\s*war\s*room|techno\s*war\s*room|echo\s*war\s*room/gi, ' ');
+  const words = s.split(' ').filter(Boolean);
+  const out = [];
+  let skip = 0;
+  for(let i = 0; i < words.length; i++) {
+    if(skip > 0) { skip--; continue; }
+    const w = words[i];
+    if(nearWord(w, TEKKO_WORDS, 2)) {
+      const w2 = words[i+1], w3 = words[i+2];
+      if(w2 && nearWord(w2, WAR_WORDS, 1) && w3 && nearWord(w3, ROOM_WORDS, 1)) { skip = 2; continue; }
+      if(w2 && nearWord(w2, ROOM_WORDS, 1)) { skip = 1; continue; }
+      continue;
+    }
+    out.push(w);
+  }
+  return out.join(' ').trim();
+}
+
+function collectTranscripts(e) {
+  const out = [];
+  for(let i = 0; i < e.results.length; i++) {
+    for(let j = 0; j < e.results[i].length; j++) {
+      const t = e.results[i][j]?.transcript;
+      if(t) out.push(t);
+    }
+  }
+  return [...new Set(out)];
+}
+
+function checkWakeFromTranscripts(transcripts) {
+  let best = 0, bestText = '';
+  for(const t of transcripts) {
+    const sc = wakeMatchScore(t);
+    if(sc > best) { best = sc; bestText = t; }
+  }
+  const heard = (wakeBuffer + transcripts.join(' ')).trim();
+  const combined = wakeMatchScore(heard);
+  if(combined > best) { best = combined; bestText = heard; }
+  return { score: best, text: bestText || heard };
 }
 
 function clearSttSilenceTimer() {
@@ -569,7 +653,12 @@ function updateSttDisplay(interim) {
       live.textContent = text || live.textContent;
     }
   }
-  if(sttMode === 'wake') setEl('vmsg', hearing ? 'Heard: '+hearing.slice(-60) : 'Listening for Tekko war room…');
+  if(sttMode === 'wake') {
+    const sc = wakeMatchScore(hearing);
+    if(sc >= WAKE_SCORE_TRIGGER) setEl('vmsg', 'Wake phrase matched — activating…');
+    else if(sc >= 0.45) setEl('vmsg', 'Close match — say TEK-ko WAR ROOM or tap ACTIVATE');
+    else setEl('vmsg', hearing ? 'Hearing…' : 'Say TEK-ko · WAR · ROOM');
+  }
   else if(listening) setEl('vmsg', text ? 'Command…' : 'Say your request…');
   if(listening && text) resetSttSilenceTimer();
 }
@@ -614,18 +703,27 @@ function resumeWakeListen() {
 
 function liveEl() { return document.getElementById('vlive'); }
 
-function onWakeDetected(fullText) {
-  if(wakeCooldown || chatBusy || sttMode !== 'wake') return;
+function onWakeDetected(fullText, forced) {
+  if(wakeCooldown || chatBusy) return;
+  if(!forced && sttMode !== 'wake') return;
   wakeCooldown = true;
-  setTimeout(() => { wakeCooldown = false; }, 10000);
+  setTimeout(() => { wakeCooldown = false; }, 8000);
   pauseRecog();
   sttMode = 'command';
+  wakeBuffer = '';
   const cmd = stripWakePhrase(fullText);
-  setEl('vmsg', 'Wake word detected.');
+  setEl('vmsg', 'Assistant activated.');
   const live = liveEl();
   if(live) live.textContent = cmd ? 'Sending: '+cmd : 'What would you like?';
   if(cmd) speak('Got it.', () => ask(cmd));
   else speak(WAKE_GREETING, () => beginCommandCapture());
+}
+
+function activateAssistant() {
+  if(chatBusy) return;
+  stopSpeak();
+  const heard = (document.getElementById('vinp')?.value || wakeBuffer || '').trim();
+  onWakeDetected(heard || 'tekko war room', true);
 }
 
 function beginCommandCapture() {
@@ -681,6 +779,7 @@ if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   recog.continuous = true;
   recog.interimResults = true;
   recog.lang = 'en-US';
+  if('maxAlternatives' in recog) recog.maxAlternatives = 5;
   recog.onstart = () => {
     if(sttMode === 'wake') {
       wakeArmed = true;
@@ -699,10 +798,12 @@ if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       else interim += t;
     }
     if(sttMode === 'wake') {
-      if(final) wakeBuffer = (wakeBuffer + final).slice(-300);
-      const heard = (wakeBuffer + interim).trim();
+      if(final) wakeBuffer = (wakeBuffer + ' ' + final).trim().slice(-400);
+      const transcripts = collectTranscripts(e);
+      if(interim) transcripts.push(wakeBuffer + ' ' + interim);
       updateSttDisplay(interim);
-      if(hasWakePhrase(heard) || hasWakePhrase(wakeBuffer)) onWakeDetected(heard || wakeBuffer);
+      const {score, text} = checkWakeFromTranscripts(transcripts);
+      if(score >= WAKE_SCORE_TRIGGER) onWakeDetected(text);
       return;
     }
     sttFinal += final;

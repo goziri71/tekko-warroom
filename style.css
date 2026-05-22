@@ -97,6 +97,8 @@ body{font-family:'Courier New',monospace;background:#000;margin:0;padding:20px}
 .vbtn{padding:5px 9px;border-radius:6px;border:1px solid var(--bd);background:transparent;color:var(--g);font-family:'Courier New',monospace;font-size:10px;cursor:pointer;transition:all 0.2s}
 .vbtn:hover{background:var(--g4)}.vbtn.on{background:rgba(0,255,180,0.14);border-color:var(--g)}
 .vbtn.wake-on{border-color:rgba(0,255,180,0.45);box-shadow:0 0 10px rgba(0,255,180,0.12)}
+.vbtn-wake{border-color:rgba(0,255,180,0.35);color:var(--g);background:rgba(0,255,180,0.06)}
+.vbtn-wake:hover{background:rgba(0,255,180,0.12)}
 .qs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px}
 .qb{padding:3px 7px;border-radius:20px;border:1px solid var(--bd);background:transparent;color:var(--g3);font-family:'Courier New',monospace;font-size:9px;cursor:pointer;white-space:nowrap;transition:all 0.2s}
 .qb:hover{color:var(--g);border-color:var(--g3);background:var(--g5)}
