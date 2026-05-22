@@ -554,7 +554,8 @@ function renderToolResults(data) {
 const synth = window.speechSynthesis;
 let utt = null, recog = null, listening = false, sttFinal = '', sttSilenceTmr = null;
 let sttMode = 'off', wakeEnabled = false, wakeArmed = false, wakeBuffer = '', wakeCooldown = false;
-const STT_SILENCE_MS = 2500;
+let sttCaptureFresh = false, lastScheduledText = '';
+const STT_SILENCE_MS = 3000;
 const WAKE_GREETING = 'Tekko war room online. What would you like to know?';
 const WAKE_SCORE_TRIGGER = 0.72;
 const TEKKO_WORDS = ['tekko','techo','tico','tako','techno','deco','teco','takeo'];
@@ -655,12 +656,28 @@ function clearSttSilenceTimer() {
   if(sttSilenceTmr) { clearTimeout(sttSilenceTmr); sttSilenceTmr = null; }
 }
 
-function resetSttSilenceTimer() {
-  clearSttSilenceTimer();
+function getCommandText() {
+  return (sttFinal + (document.getElementById('vinp')?.value || '')).trim();
+}
+
+function scheduleAutoSendAfterSilence() {
   if(!listening || sttMode === 'wake') return;
-  const text = (sttFinal + (document.getElementById('vinp')?.value || '')).trim();
-  if(!text) return;
-  sttSilenceTmr = setTimeout(() => endCommandCapture({autoSend:true}), STT_SILENCE_MS);
+  const text = getCommandText();
+  if(!text) {
+    clearSttSilenceTimer();
+    lastScheduledText = '';
+    return;
+  }
+  if(text === lastScheduledText && sttSilenceTmr) return;
+  lastScheduledText = text;
+  clearSttSilenceTimer();
+  setEl('vmsg', 'Pause ~'+(STT_SILENCE_MS/1000)+'s to auto-send…');
+  sttSilenceTmr = setTimeout(() => {
+    sttSilenceTmr = null;
+    if(!listening) return;
+    const now = getCommandText();
+    if(now) endCommandCapture({autoSend:true});
+  }, STT_SILENCE_MS);
 }
 
 function clearSttUi(keepLive) {
@@ -701,8 +718,8 @@ function updateSttDisplay(interim) {
     else if(sc >= 0.45) setEl('vmsg', 'Close match — say TEK-ko WAR ROOM or tap ACTIVATE');
     else setEl('vmsg', hearing ? 'Hearing…' : 'Say TEK-ko · WAR · ROOM');
   }
-  else if(listening) setEl('vmsg', text ? 'Command…' : 'Say your request…');
-  if(listening && text) resetSttSilenceTimer();
+  else if(listening && !sttSilenceTmr) setEl('vmsg', text ? 'Listening…' : 'Say your request…');
+  if(listening && text) scheduleAutoSendAfterSilence();
 }
 
 function setMicUi(active, label) {
@@ -780,7 +797,9 @@ function beginCommandCapture() {
   if(live) { live.classList.add('show'); live.textContent = 'Speak your command…'; }
   setMicUi(true, '■ STOP');
   wave(true);
-  setEl('vmsg', 'Your command… pause to send.');
+  setEl('vmsg', 'Speak now — auto-sends after '+STT_SILENCE_MS/1000+'s silence.');
+  sttCaptureFresh = true;
+  lastScheduledText = '';
   try { recog.start(); }
   catch(e) {
     listening = false;
@@ -793,6 +812,7 @@ function endCommandCapture(opts = {}) {
   const autoSend = !!opts.autoSend;
   if(!listening && sttMode !== 'command' && sttMode !== 'manual') return;
   listening = false;
+  lastScheduledText = '';
   clearSttSilenceTimer();
   pauseRecog();
   const inp = document.getElementById('vinp');
@@ -829,8 +849,14 @@ if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       updateSttDisplay('');
       return;
     }
-    sttFinal = '';
-    updateSttDisplay('');
+    if(sttCaptureFresh) {
+      sttCaptureFresh = false;
+      sttFinal = '';
+      lastScheduledText = '';
+      updateSttDisplay('');
+      return;
+    }
+    if(listening) scheduleAutoSendAfterSilence();
   };
   recog.onresult = e => {
     let interim = '', final = '';
@@ -850,6 +876,7 @@ if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
     }
     sttFinal += final;
     updateSttDisplay(interim);
+    if(listening) scheduleAutoSendAfterSilence();
   };
   recog.onerror = e => {
     if(sttMode === 'wake') {
@@ -868,7 +895,13 @@ if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       return;
     }
     if(listening) {
-      try { recog.start(); } catch(err) { endCommandCapture({autoSend:false}); }
+      const text = getCommandText();
+      if(text) scheduleAutoSendAfterSilence();
+      try { recog.start(); }
+      catch(err) {
+        if(text) endCommandCapture({autoSend:true});
+        else endCommandCapture({autoSend:false});
+      }
     }
   };
   wakeEnabled = true;
@@ -886,6 +919,7 @@ function toggleMic() {
   stopSpeak();
   pauseRecog();
   sttMode = 'manual';
+  sttCaptureFresh = true;
   beginCommandCapture();
 }
 
