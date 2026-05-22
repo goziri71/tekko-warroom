@@ -189,7 +189,7 @@
           <button class="qb qb-web" id="qb-web" onclick="askResearch()" style="display:none" title="Web search (mode: research)">&#127760; Web</button>
         </div>
         <div class="ask-row">
-          <input class="vinp" id="vinp" placeholder="Speak — auto-sends after 3s pause (Enter optional)" onkeydown="if(event.key==='Enter'){const v=this.value.trim();if(listening)endCommandCapture({autoSend:true});else if(v)ask(v);}">
+          <input class="vinp" id="vinp" placeholder="Speak — auto-sends after 2s pause (Enter optional)" onkeydown="if(event.key==='Enter'){const v=this.value.trim();if(listening)endCommandCapture({autoSend:true});else if(v)ask(v);}">
           <button type="button" class="vbtn vbtn-test" id="vtest" onclick="testSpeech()" title="Play a test phrase — no API call">&#9835; TEST SPEECH</button>
         </div>
         <div class="vlive" id="vlive"></div>

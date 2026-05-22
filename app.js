@@ -562,8 +562,8 @@ function renderToolResults(data) {
 const synth = window.speechSynthesis;
 let utt = null, recog = null, listening = false, sttFinal = '', sttSilenceTmr = null;
 let sttMode = 'off', wakeEnabled = false, wakeArmed = false, wakeBuffer = '', wakeCooldown = false;
-let sttCaptureFresh = false, lastScheduledText = '';
-const STT_SILENCE_MS = 3000;
+let sttCaptureFresh = false, lastScheduledText = '', ttsActive = false, recogStarting = false;
+const STT_SILENCE_MS = 2000;
 const WAKE_GREETING = 'What can I do for you today?';
 const WAKE_SCORE_TRIGGER = 1;
 const TEKKO_WAKE = ['tekko','techo','tico','taco','teco'];
@@ -607,29 +607,6 @@ function hasWakePhrase(t) { return wakeMatchScore(t) >= WAKE_SCORE_TRIGGER; }
 function stripWakePhrase(t) {
   const words = normText(t).split(' ').filter(Boolean);
   return words.filter(w => !isTekkoWakeWord(w)).join(' ').trim();
-}
-
-function collectTranscripts(e) {
-  const out = [];
-  for(let i = 0; i < e.results.length; i++) {
-    for(let j = 0; j < e.results[i].length; j++) {
-      const t = e.results[i][j]?.transcript;
-      if(t) out.push(t);
-    }
-  }
-  return [...new Set(out)];
-}
-
-function checkWakeFromTranscripts(transcripts) {
-  let best = 0, bestText = '';
-  for(const t of transcripts) {
-    const sc = wakeMatchScore(t);
-    if(sc > best) { best = sc; bestText = t; }
-  }
-  const heard = (wakeBuffer + transcripts.join(' ')).trim();
-  const combined = wakeMatchScore(heard);
-  if(combined > best) { best = combined; bestText = heard; }
-  return { score: best, text: bestText || heard };
 }
 
 function clearSttSilenceTimer() {
@@ -711,7 +688,25 @@ function setMicUi(active, label) {
 
 function pauseRecog() {
   wakeArmed = false;
+  recogStarting = false;
   try { recog?.stop(); } catch(e) {}
+}
+
+function safeStartRecog(delay = 0) {
+  if(!recog || ttsActive || chatBusy) return;
+  const go = () => {
+    if(!recog || ttsActive || recogStarting || chatBusy) return;
+    if(sttMode === 'wake' && !wakeEnabled) return;
+    if((sttMode === 'command' || sttMode === 'manual') && !listening) return;
+    recogStarting = true;
+    try { recog.start(); }
+    catch(e) {
+      recogStarting = false;
+      if(sttMode === 'wake') setTimeout(() => safeStartRecog(0), 1500);
+    }
+  };
+  if(delay) setTimeout(go, delay);
+  else go();
 }
 
 function stopAlwaysListen() {
@@ -735,8 +730,7 @@ function resumeWakeListen() {
   setMicUi(false);
   updateSttDisplay('');
   setEl('vmsg', 'Listening for Tekko…');
-  try { recog.start(); }
-  catch(e) { setTimeout(resumeWakeListen, 2000); }
+  safeStartRecog(300);
 }
 
 function liveEl() { return document.getElementById('vlive'); }
@@ -752,37 +746,33 @@ function onWakeDetected(fullText, forced) {
   setEl('vmsg', 'Tekko activated.');
   const live = liveEl();
   if(live) live.textContent = 'Speak your command…';
-  speak(WAKE_GREETING, () => beginCommandCapture());
+  speak(WAKE_GREETING, () => setTimeout(beginCommandCapture, 500));
 }
 
 function activateAssistant() {
   if(chatBusy) return;
   stopSpeak();
   const heard = (document.getElementById('vinp')?.value || wakeBuffer || '').trim();
-  onWakeDetected(heard || 'tekko war room', true);
+  onWakeDetected(heard || 'tekko', true);
 }
 
 function beginCommandCapture() {
   if(!recog || chatBusy) { resumeWakeListen(); return; }
+  if(ttsActive) { setTimeout(beginCommandCapture, 200); return; }
   pauseRecog();
   sttMode = 'command';
   listening = true;
   sttFinal = '';
+  lastScheduledText = '';
   const inp = document.getElementById('vinp');
   if(inp) { inp.value = ''; inp.classList.add('listening'); }
   const live = liveEl();
   if(live) { live.classList.add('show'); live.textContent = 'Speak your command…'; }
   setMicUi(true, '■ STOP');
   wave(true);
-  setEl('vmsg', 'Speak now — auto-sends after '+STT_SILENCE_MS/1000+'s silence.');
+  setEl('vmsg', 'Speak now — sends after '+STT_SILENCE_MS/1000+'s pause.');
   sttCaptureFresh = true;
-  lastScheduledText = '';
-  try { recog.start(); }
-  catch(e) {
-    listening = false;
-    setEl('vmsg', 'Mic failed.');
-    resumeWakeListen();
-  }
+  safeStartRecog(200);
 }
 
 function endCommandCapture(opts = {}) {
@@ -795,7 +785,7 @@ function endCommandCapture(opts = {}) {
   const inp = document.getElementById('vinp');
   if(inp) inp.classList.remove('listening');
   wave(false);
-  const text = (inp?.value || sttFinal || '').trim();
+  const text = getCommandText() || (inp?.value || '').trim();
   const wasManual = sttMode === 'manual';
   if(autoSend && text) {
     clearSttUi();
@@ -818,12 +808,11 @@ if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   recog.continuous = true;
   recog.interimResults = true;
   recog.lang = 'en-US';
-  if('maxAlternatives' in recog) recog.maxAlternatives = 5;
   recog.onstart = () => {
+    recogStarting = false;
     if(sttMode === 'wake') {
       wakeArmed = true;
       setMicUi(false);
-      updateSttDisplay('');
       return;
     }
     if(sttCaptureFresh) {
@@ -833,52 +822,52 @@ if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       updateSttDisplay('');
       return;
     }
-    if(listening) scheduleAutoSendAfterSilence();
   };
   recog.onresult = e => {
+    if(ttsActive) return;
     let interim = '', final = '';
     for(let i = e.resultIndex; i < e.results.length; i++) {
-      const t = e.results[i][0].transcript;
+      const t = e.results[i][0]?.transcript;
+      if(!t) continue;
       if(e.results[i].isFinal) final += t;
       else interim += t;
     }
     if(sttMode === 'wake') {
-      if(final) wakeBuffer = (wakeBuffer + ' ' + final).trim().slice(-400);
-      const transcripts = collectTranscripts(e);
-      if(interim) transcripts.push(wakeBuffer + ' ' + interim);
+      if(final) wakeBuffer = (wakeBuffer + ' ' + final).trim().slice(-200);
       updateSttDisplay(interim);
-      const {score, text} = checkWakeFromTranscripts(transcripts);
-      if(score >= WAKE_SCORE_TRIGGER) onWakeDetected(text);
+      const heard = (wakeBuffer + ' ' + interim).trim();
+      if(wakeMatchScore(heard) >= WAKE_SCORE_TRIGGER) onWakeDetected(heard);
       return;
     }
+    if(!listening) return;
     sttFinal += final;
     updateSttDisplay(interim);
-    if(listening) scheduleAutoSendAfterSilence();
+    scheduleAutoSendAfterSilence();
   };
   recog.onerror = e => {
+    recogStarting = false;
+    if(e.error === 'aborted') return;
     if(sttMode === 'wake') {
       if(e.error === 'not-allowed') { wakeEnabled = false; setEl('vmsg', 'Mic blocked.'); }
-      else if(e.error !== 'no-speech') setTimeout(resumeWakeListen, 2000);
+      else if(e.error !== 'no-speech') setTimeout(() => resumeWakeListen(), 1500);
       return;
     }
-    if(e.error === 'no-speech' && (sttFinal.trim() || document.getElementById('vinp')?.value?.trim())) return;
-    endCommandCapture({autoSend:false});
-    setEl('vmsg', e.error === 'not-allowed' ? 'Mic blocked.' : 'Mic error.');
+    if(e.error === 'no-speech') return;
+    if(listening && getCommandText()) scheduleAutoSendAfterSilence();
+    else if(listening) setEl('vmsg', 'Still listening…');
   };
   recog.onend = () => {
+    recogStarting = false;
+    if(ttsActive) return;
     if(sttMode === 'wake' && wakeEnabled && !chatBusy) {
       wakeArmed = true;
-      try { recog.start(); } catch(e) { setTimeout(resumeWakeListen, 1500); }
+      safeStartRecog(400);
       return;
     }
     if(listening) {
       const text = getCommandText();
       if(text) scheduleAutoSendAfterSilence();
-      try { recog.start(); }
-      catch(err) {
-        if(text) endCommandCapture({autoSend:true});
-        else endCommandCapture({autoSend:false});
-      }
+      safeStartRecog(250);
     }
   };
   wakeEnabled = true;
@@ -912,39 +901,38 @@ function wave(on) {
 function speak(text, onEnd, skipWakePause) {
   if(!synth || !text?.trim()) { onEnd?.(); return; }
   if(!skipWakePause) pauseRecog();
-  const say = () => {
+  const run = () => {
+    ttsActive = true;
     synth.cancel();
-    utt = new SpeechSynthesisUtterance(text.trim());
-    utt.rate = 1.08;
-    utt.pitch = 0.95;
-    const voices = synth.getVoices();
-    const voice = voices.find(v=>v.lang.startsWith('en')) || voices[0];
-    if(voice) utt.voice = voice;
-    utt.onstart = () => wave(true);
-    utt.onend = () => {
-      wave(false);
-      onEnd?.();
-      setTimeout(() => {
-        if(wakeEnabled && tok && !chatBusy && !listening) resumeWakeListen();
-      }, 350);
-    };
-    utt.onerror = () => {
-      wave(false);
-      onEnd?.();
-      setTimeout(() => {
-        if(wakeEnabled && tok && !chatBusy && !listening) resumeWakeListen();
-      }, 350);
-    };
-    synth.speak(utt);
-    if(synth.paused) synth.resume();
+    setTimeout(() => {
+      if(!synth) { ttsActive = false; onEnd?.(); return; }
+      utt = new SpeechSynthesisUtterance(text.trim());
+      utt.rate = 1;
+      utt.pitch = 1;
+      utt.volume = 1;
+      const voices = synth.getVoices();
+      const voice = voices.find(v=>v.lang.startsWith('en') && !v.name.toLowerCase().includes('compact')) || voices.find(v=>v.lang.startsWith('en')) || voices[0];
+      if(voice) utt.voice = voice;
+      const finish = () => {
+        wave(false);
+        ttsActive = false;
+        if(onEnd) onEnd();
+        else if(wakeEnabled && tok && !chatBusy && !listening) setTimeout(resumeWakeListen, 600);
+      };
+      utt.onstart = () => wave(true);
+      utt.onend = finish;
+      utt.onerror = finish;
+      synth.speak(utt);
+    }, 80);
   };
-  if(synth.getVoices().length) say();
-  else synth.onvoiceschanged = () => { say(); synth.onvoiceschanged = null; };
+  if(synth.getVoices().length) run();
+  else synth.onvoiceschanged = () => { run(); synth.onvoiceschanged = null; };
 }
 if(synth) synth.onvoiceschanged = () => {};
 
 function stopSpeak() {
   if(synth) synth.cancel();
+  ttsActive = false;
   wave(false);
   const tb = document.getElementById('vtest');
   if(tb) tb.classList.remove('on');
@@ -963,25 +951,29 @@ function testSpeech() {
   if(btn) btn.classList.add('on');
   setEl('vmsg','TEST SPEECH — playing now. Listen for: "'+SPEECH_TEST_PHRASE+'"');
   const run = () => {
+    ttsActive = true;
     const u = new SpeechSynthesisUtterance(SPEECH_TEST_PHRASE);
-    u.rate = 1.05;
-    u.pitch = 0.95;
+    u.rate = 1;
+    u.pitch = 1;
     const voices = synth.getVoices();
-    const voice = voices.find(v=>v.lang.startsWith('en')) || voices[0];
+    const voice = voices.find(v=>v.lang.startsWith('en') && !v.name.toLowerCase().includes('compact')) || voices.find(v=>v.lang.startsWith('en')) || voices[0];
     if(voice) u.voice = voice;
+    const done = () => {
+      ttsActive = false;
+      wave(false);
+      if(btn) btn.classList.remove('on');
+    };
     u.onstart = () => {
       wave(true);
       setEl('vmsg','TEST SPEECH — speaking now…');
     };
     u.onend = () => {
-      wave(false);
-      if(btn) btn.classList.remove('on');
+      done();
       setEl('vmsg','Speech OK. Say Tekko to wake anytime.');
       resumeWakeListen();
     };
     u.onerror = () => {
-      wave(false);
-      if(btn) btn.classList.remove('on');
+      done();
       setEl('vmsg','Speech test failed.');
       resumeWakeListen();
     };
@@ -1031,11 +1023,17 @@ async function ask(q, modeOverride) {
     if(chatHistory.length>CHAT_HIST_MAX) chatHistory.splice(0, chatHistory.length-CHAT_HIST_MAX);
     setEl('vmsg', (resMode && resMode !== 'auto' ? '['+modeLabel(resMode)+'] ' : '') + reply);
     renderToolResults(data);
-    speak(reply, () => setChatBusy(false));
+    speak(reply, () => {
+      setChatBusy(false);
+      if(wakeEnabled && tok) setTimeout(resumeWakeListen, 800);
+    });
   } catch(e) {
     const err = e.message || 'AI error — check connection and try again.';
     setEl('vmsg', err);
-    speak(err.length > 180 ? 'AI request failed.' : err, () => setChatBusy(false));
+    speak(err.length > 180 ? 'AI request failed.' : err, () => {
+      setChatBusy(false);
+      if(wakeEnabled && tok) setTimeout(resumeWakeListen, 800);
+    });
   }
 }
 
