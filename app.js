@@ -423,7 +423,11 @@ function bootWar() {
   startSSE();
   startSessionTimers();
   checkWarroomStatus();
-  setTimeout(() => resumeWakeListen(), 1200);
+  setTimeout(() => {
+    const live = document.getElementById('vlive');
+    if(live) { live.classList.add('show'); live.textContent = 'Say “Tekko war room”…'; }
+    resumeWakeListen();
+  }, 1200);
 }
 
 // Warroom AI (backend OpenAI + tools)
@@ -507,13 +511,19 @@ function renderToolResults(data) {
 // Voice Assistant — always-on wake word + command mode
 const synth = window.speechSynthesis;
 let utt = null, recog = null, listening = false, sttFinal = '', sttSilenceTmr = null;
-let sttMode = 'off', wakeEnabled = false, wakeArmed = false;
+let sttMode = 'off', wakeEnabled = false, wakeArmed = false, wakeBuffer = '', wakeCooldown = false;
 const STT_SILENCE_MS = 2500;
-const WAKE_RE = /tekko\s*war\s*room/i;
 const WAKE_GREETING = 'Tekko war room online. What would you like to know?';
 
-function hasWakePhrase(t) { return WAKE_RE.test(t); }
-function stripWakePhrase(t) { return t.replace(WAKE_RE, ' ').replace(/\s+/g, ' ').trim(); }
+function hasWakePhrase(t) {
+  const s = (t||'').toLowerCase();
+  if(/tekko\s*war\s*room|tekko\s*warroom|techo\s*war\s*room|tico\s*war\s*room/i.test(s)) return true;
+  return s.includes('tekko') && (s.includes('war room') || s.includes('warroom'));
+}
+
+function stripWakePhrase(t) {
+  return t.replace(/tekko\s*war\s*room|tekko\s*warroom|techo\s*war\s*room/gi, ' ').replace(/\s+/g, ' ').trim();
+}
 
 function clearSttSilenceTimer() {
   if(sttSilenceTmr) { clearTimeout(sttSilenceTmr); sttSilenceTmr = null; }
@@ -527,12 +537,41 @@ function resetSttSilenceTimer() {
   sttSilenceTmr = setTimeout(() => endCommandCapture({autoSend:true}), STT_SILENCE_MS);
 }
 
-function clearSttUi() {
+function clearSttUi(keepLive) {
   const inp = document.getElementById('vinp');
   const live = document.getElementById('vlive');
   if(inp) { inp.value = ''; inp.classList.remove('listening'); }
-  if(live) { live.textContent = ''; live.classList.remove('show'); }
+  if(live && !keepLive) {
+    live.textContent = sttMode === 'wake' ? 'Say “Tekko war room”…' : '';
+  }
   sttFinal = '';
+  if(sttMode === 'wake') wakeBuffer = '';
+}
+
+function updateSttDisplay(interim) {
+  const inp = document.getElementById('vinp');
+  const live = document.getElementById('vlive');
+  const text = (sttFinal + interim).trim();
+  const hearing = sttMode === 'wake' ? (wakeBuffer + interim).trim() : text;
+  if(inp) {
+    inp.value = sttMode === 'wake' ? hearing : text;
+    inp.classList.toggle('listening', listening || sttMode === 'wake');
+  }
+  if(live) {
+    live.classList.add('show');
+    if(sttMode === 'wake') {
+      live.textContent = hearing || 'Say “Tekko war room”…';
+      live.title = hearing;
+    } else if(listening) {
+      live.textContent = text || 'Speak your command…';
+      live.title = text;
+    } else {
+      live.textContent = text || live.textContent;
+    }
+  }
+  if(sttMode === 'wake') setEl('vmsg', hearing ? 'Heard: '+hearing.slice(-60) : 'Listening for Tekko war room…');
+  else if(listening) setEl('vmsg', text ? 'Command…' : 'Say your request…');
+  if(listening && text) resetSttSilenceTimer();
 }
 
 function setMicUi(active, label) {
@@ -546,16 +585,6 @@ function setMicUi(active, label) {
 function pauseRecog() {
   wakeArmed = false;
   try { recog?.stop(); } catch(e) {}
-}
-
-function updateCommandDisplay(interim) {
-  const inp = document.getElementById('vinp');
-  const live = document.getElementById('vlive');
-  const text = (sttFinal + interim).trim();
-  if(inp) { inp.value = text; inp.classList.toggle('listening', listening); }
-  if(live) { live.textContent = text; live.classList.toggle('show', listening); live.title = text; }
-  if(listening) setEl('vmsg', text ? 'Command…' : 'Say your request…');
-  if(text) resetSttSilenceTimer();
 }
 
 function stopAlwaysListen() {
@@ -573,19 +602,28 @@ function resumeWakeListen() {
   if(!tok || !recog || !wakeEnabled || chatBusy) return;
   sttMode = 'wake';
   listening = false;
-  clearSttUi();
+  wakeBuffer = '';
+  sttFinal = '';
   wakeArmed = true;
   setMicUi(false);
+  updateSttDisplay('');
   setEl('vmsg', 'Listening for Tekko war room…');
   try { recog.start(); }
   catch(e) { setTimeout(resumeWakeListen, 2000); }
 }
 
+function liveEl() { return document.getElementById('vlive'); }
+
 function onWakeDetected(fullText) {
-  if(chatBusy || sttMode !== 'wake') return;
+  if(wakeCooldown || chatBusy || sttMode !== 'wake') return;
+  wakeCooldown = true;
+  setTimeout(() => { wakeCooldown = false; }, 10000);
   pauseRecog();
   sttMode = 'command';
   const cmd = stripWakePhrase(fullText);
+  setEl('vmsg', 'Wake word detected.');
+  const live = liveEl();
+  if(live) live.textContent = cmd ? 'Sending: '+cmd : 'What would you like?';
   if(cmd) speak('Got it.', () => ask(cmd));
   else speak(WAKE_GREETING, () => beginCommandCapture());
 }
@@ -596,7 +634,10 @@ function beginCommandCapture() {
   sttMode = 'command';
   listening = true;
   sttFinal = '';
-  clearSttUi();
+  const inp = document.getElementById('vinp');
+  if(inp) { inp.value = ''; inp.classList.add('listening'); }
+  const live = liveEl();
+  if(live) { live.classList.add('show'); live.textContent = 'Speak your command…'; }
   setMicUi(true, '■ STOP');
   wave(true);
   setEl('vmsg', 'Your command… pause to send.');
@@ -641,9 +682,14 @@ if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   recog.interimResults = true;
   recog.lang = 'en-US';
   recog.onstart = () => {
-    if(sttMode === 'wake') { wakeArmed = true; setMicUi(false); return; }
+    if(sttMode === 'wake') {
+      wakeArmed = true;
+      setMicUi(false);
+      updateSttDisplay('');
+      return;
+    }
     sttFinal = '';
-    updateCommandDisplay('');
+    updateSttDisplay('');
   };
   recog.onresult = e => {
     let interim = '', final = '';
@@ -653,13 +699,14 @@ if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       else interim += t;
     }
     if(sttMode === 'wake') {
-      let full = '';
-      for(let i = 0; i < e.results.length; i++) full += e.results[i][0].transcript;
-      if(hasWakePhrase(full)) onWakeDetected(full);
+      if(final) wakeBuffer = (wakeBuffer + final).slice(-300);
+      const heard = (wakeBuffer + interim).trim();
+      updateSttDisplay(interim);
+      if(hasWakePhrase(heard) || hasWakePhrase(wakeBuffer)) onWakeDetected(heard || wakeBuffer);
       return;
     }
     sttFinal += final;
-    updateCommandDisplay(interim);
+    updateSttDisplay(interim);
   };
   recog.onerror = e => {
     if(sttMode === 'wake') {
