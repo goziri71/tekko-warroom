@@ -89,6 +89,10 @@ body{font-family:'Courier New',monospace;background:#000;margin:0;padding:20px}
 .vbtn-test.on{background:rgba(0,255,180,0.2);box-shadow:0 0 12px rgba(0,255,180,0.15)}
 .vhint{font-size:9px;color:rgba(0,255,180,0.35);margin-bottom:6px;line-height:1.4}
 .vhint strong{color:var(--g3);font-weight:500}
+.vlive{display:none;min-height:28px;margin-bottom:6px;padding:6px 10px;border:1px dashed var(--g3);border-radius:8px;background:rgba(0,255,180,0.04);font-size:11px;color:var(--g);line-height:1.5;word-break:break-word}
+.vlive.show{display:block}
+.vlive:empty::before{content:'Your speech will appear here as you talk…';color:rgba(0,255,180,0.25);font-style:italic}
+.vinp.listening{border-color:var(--g);box-shadow:0 0 0 1px rgba(0,255,180,0.2)}
 .brow{display:flex;gap:5px;flex-wrap:wrap}
 .vbtn{padding:5px 9px;border-radius:6px;border:1px solid var(--bd);background:transparent;color:var(--g);font-family:'Courier New',monospace;font-size:10px;cursor:pointer;transition:all 0.2s}
 .vbtn:hover{background:var(--g4)}.vbtn.on{background:rgba(0,255,180,0.14);border-color:var(--g)}
