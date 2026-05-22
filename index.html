@@ -171,11 +171,14 @@
           <button class="qb" onclick="ask('Any stuck transactions?')">Guardian</button>
           <button class="qb" onclick="ask('Any transactions today? Give examples.')">Today</button>
         </div>
-        <input class="vinp" id="vinp" placeholder="Ask anything about Tekko revenue..." onkeydown="if(event.key==='Enter')ask(this.value)">
+        <div class="ask-row">
+          <input class="vinp" id="vinp" placeholder="Ask anything about Tekko revenue…" onkeydown="if(event.key==='Enter')ask(this.value)">
+          <button type="button" class="vbtn vbtn-test" id="vtest" onclick="testSpeech()" title="Play a test phrase — no API call">&#9835; TEST SPEECH</button>
+        </div>
+        <div class="vhint" id="vhint">Tip: click <strong>TEST SPEECH</strong> first to confirm you hear audio, then ask a question.</div>
         <div class="brow">
           <button class="vbtn" id="mbtn" onclick="toggleMic()">&#9679; SPEAK</button>
           <button class="vbtn" onclick="readAll()">&#9654; ALL</button>
-          <button class="vbtn" onclick="speak('Tekko war room voice is working.')">&#9835; TEST</button>
           <button class="vbtn" onclick="stopSpeak()">&#9632; STOP</button>
         </div>
       </div>

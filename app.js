@@ -447,7 +447,7 @@ async function checkWarroomStatus() {
     if(r.status===401){logout();return;}
     if(r.ok && d.success!==false) {
       const model = d.data?.model || d.model;
-      setEl('vmsg', model ? 'AI online ('+model+'). Ask about MRR or transactions.' : 'AI assistant online. Ask about MRR, transactions, or system health.');
+      setEl('vmsg', model ? 'AI online ('+model+'). Use TEST SPEECH, then ask below.' : 'AI online. Use TEST SPEECH next to the ask box, then type a question.');
       return;
     }
     setEl('vmsg','AI offline: '+apiErrMessage(d,r.status));
@@ -548,6 +548,47 @@ if(synth) synth.onvoiceschanged = () => {};
 function stopSpeak() {
   if(synth) synth.cancel();
   wave(false);
+  const tb = document.getElementById('vtest');
+  if(tb) tb.classList.remove('on');
+}
+
+const SPEECH_TEST_PHRASE = 'Tekko war room speech test. If you hear this, audio is working.';
+
+function testSpeech() {
+  const btn = document.getElementById('vtest');
+  stopSpeak();
+  if(!synth) {
+    setEl('vmsg','Speech not supported in this browser. Use Chrome or Edge over HTTPS.');
+    return;
+  }
+  if(btn) btn.classList.add('on');
+  setEl('vmsg','TEST SPEECH — playing now. Listen for: "'+SPEECH_TEST_PHRASE+'"');
+  const run = () => {
+    const u = new SpeechSynthesisUtterance(SPEECH_TEST_PHRASE);
+    u.rate = 1.05;
+    u.pitch = 0.95;
+    const voices = synth.getVoices();
+    const voice = voices.find(v=>v.lang.startsWith('en')) || voices[0];
+    if(voice) u.voice = voice;
+    u.onstart = () => {
+      wave(true);
+      setEl('vmsg','TEST SPEECH — speaking now…');
+    };
+    u.onend = () => {
+      wave(false);
+      if(btn) btn.classList.remove('on');
+      setEl('vmsg','Speech test OK. If you heard the phrase, audio works — type a question above or use MRR / SPEAK.');
+    };
+    u.onerror = e => {
+      wave(false);
+      if(btn) btn.classList.remove('on');
+      setEl('vmsg','Speech test failed ('+(e.error||'blocked')+'). Unmute tab, allow sound, use Chrome on HTTPS.');
+    };
+    synth.speak(u);
+    if(synth.paused) synth.resume();
+  };
+  if(synth.getVoices().length) run();
+  else synth.onvoiceschanged = () => { run(); synth.onvoiceschanged = null; };
 }
 
 async function ask(q) {

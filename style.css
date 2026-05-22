@@ -81,8 +81,14 @@ body{font-family:'Courier New',monospace;background:#000;margin:0;padding:20px}
 .vtool-tbl th{color:var(--g3);text-align:left;padding:3px 5px;border-bottom:1px solid var(--bd);font-weight:400}
 .vtool-tbl td{padding:3px 5px;border-bottom:1px solid rgba(0,255,180,0.04);color:var(--g2)}
 .vinp:disabled,.qb:disabled,.vbtn:disabled{opacity:0.45;cursor:not-allowed}
+.ask-row{display:flex;gap:6px;align-items:stretch;margin-bottom:4px}
+.ask-row .vinp{flex:1;margin-bottom:0}
 .vinp{width:100%;background:var(--g5);border:1px solid var(--bd);border-radius:8px;color:var(--g);font-family:'Courier New',monospace;font-size:11px;padding:6px 10px;outline:none;margin-bottom:6px}
 .vinp::placeholder{color:rgba(0,255,180,0.18)}.vinp:focus{border-color:var(--g3)}
+.vbtn-test{flex-shrink:0;border-color:var(--g3);color:var(--g);background:rgba(0,255,180,0.08);white-space:nowrap}
+.vbtn-test.on{background:rgba(0,255,180,0.2);box-shadow:0 0 12px rgba(0,255,180,0.15)}
+.vhint{font-size:9px;color:rgba(0,255,180,0.35);margin-bottom:6px;line-height:1.4}
+.vhint strong{color:var(--g3);font-weight:500}
 .brow{display:flex;gap:5px;flex-wrap:wrap}
 .vbtn{padding:5px 9px;border-radius:6px;border:1px solid var(--bd);background:transparent;color:var(--g);font-family:'Courier New',monospace;font-size:10px;cursor:pointer;transition:all 0.2s}
 .vbtn:hover{background:var(--g4)}.vbtn.on{background:rgba(0,255,180,0.14);border-color:var(--g)}
