@@ -428,7 +428,7 @@ function bootWar() {
   checkWarroomStatus();
   setTimeout(() => {
     const live = document.getElementById('vlive');
-    if(live) { live.classList.add('show'); live.textContent = 'Say “Tekko war room”…'; }
+    if(live) { live.classList.add('show'); live.textContent = 'Say “Tekko” to wake…'; }
     resumeWakeListen();
   }, 1200);
   if(!window._chartResize) {
@@ -490,8 +490,8 @@ function updateWarroomUi() {
   if(vzone) vzone.classList.toggle('web-ready', warroomStatus.webResearch && warroomStatus.enabled);
   if(hint) {
     hint.innerHTML = warroomStatus.webResearch
-      ? 'Say <strong>TEK-ko · WAR · ROOM</strong> or <strong>ACTIVATE</strong>. Say <strong>search the internet</strong> + question for web. <strong>Web</strong> / <strong>SPEAK</strong>.'
-      : 'Say <strong>TEK-ko · WAR · ROOM</strong> or <strong>ACTIVATE</strong>. <strong>SPEAK</strong> = manual command.';
+      ? 'Say <strong>Tekko</strong> or tap <strong>ACTIVATE</strong>. Then your command. Say <strong>search the internet</strong> for web.'
+      : 'Say <strong>Tekko</strong> to wake the assistant, or tap <strong>ACTIVATE</strong>.';
   }
 }
 
@@ -564,12 +564,9 @@ let utt = null, recog = null, listening = false, sttFinal = '', sttSilenceTmr = 
 let sttMode = 'off', wakeEnabled = false, wakeArmed = false, wakeBuffer = '', wakeCooldown = false;
 let sttCaptureFresh = false, lastScheduledText = '';
 const STT_SILENCE_MS = 3000;
-const WAKE_GREETING = 'Tekko war room online. What would you like to know?';
-const WAKE_SCORE_TRIGGER = 0.72;
-const TEKKO_WORDS = ['tekko','techo','tico','tako','techno','deco','teco','takeo'];
-const WAR_WORDS = ['war','wor','bar','more','word','wars'];
-const ROOM_WORDS = ['room','rum','boom','rome','womb','rooms','roam'];
-const WAKE_REGEX = /tekko\s*war\s*room|tekko\s*warroom|techo\s*war\s*room|tico\s*war\s*room|taco\s*war\s*room|techno\s*war\s*room|echo\s*war\s*room/i;
+const WAKE_GREETING = 'What can I do for you today?';
+const WAKE_SCORE_TRIGGER = 1;
+const TEKKO_WAKE = ['tekko','techo','tico','taco','teco'];
 
 function normText(t) {
   return (t||'').toLowerCase().replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
@@ -593,48 +590,23 @@ function nearWord(w, list, maxDist) {
   return list.some(a => w === a || w.includes(a) || a.includes(w) || lev(w, a) <= maxDist);
 }
 
+function isTekkoWakeWord(w) {
+  if(!w || w.length < 3) return false;
+  return TEKKO_WAKE.some(a => w === a || lev(w, a) <= 1);
+}
+
 function wakeMatchScore(text) {
   const s = normText(text);
   if(!s) return 0;
-  if(WAKE_REGEX.test(s)) return 1;
-  const words = s.split(' ').filter(Boolean);
-  if(words.length < 2) return 0;
-  let best = 0;
-  for(let i = 0; i < words.length; i++) {
-    for(let len = 2; len <= 7 && i + len <= words.length; len++) {
-      const slice = words.slice(i, i + len);
-      const hasTekko = slice.some((w, idx) => idx <= 2 && nearWord(w, TEKKO_WORDS, 2));
-      const hasWar = slice.some((w, idx) => idx >= 1 && nearWord(w, WAR_WORDS, 1));
-      const hasRoom = slice.some((w, idx) => idx >= 1 && nearWord(w, ROOM_WORDS, 1));
-      if(hasTekko && hasWar && hasRoom) best = Math.max(best, 1);
-      else if(hasTekko && (hasWar || hasRoom)) best = Math.max(best, 0.78);
-      else if(hasTekko && len >= 3) best = Math.max(best, 0.45);
-    }
-  }
-  if(s.includes('war') && s.includes('room') && nearWord(words[0]||'', TEKKO_WORDS, 3)) best = Math.max(best, 0.85);
-  return best;
+  if(/\b(tekko|techo|tico|taco|teco)\b/.test(s)) return 1;
+  return s.split(' ').filter(Boolean).some(isTekkoWakeWord) ? 1 : 0;
 }
 
 function hasWakePhrase(t) { return wakeMatchScore(t) >= WAKE_SCORE_TRIGGER; }
 
 function stripWakePhrase(t) {
-  let s = normText(t);
-  s = s.replace(/tekko\s*war\s*room|tekko\s*warroom|techo\s*war\s*room|tico\s*war\s*room|taco\s*war\s*room|techno\s*war\s*room|echo\s*war\s*room/gi, ' ');
-  const words = s.split(' ').filter(Boolean);
-  const out = [];
-  let skip = 0;
-  for(let i = 0; i < words.length; i++) {
-    if(skip > 0) { skip--; continue; }
-    const w = words[i];
-    if(nearWord(w, TEKKO_WORDS, 2)) {
-      const w2 = words[i+1], w3 = words[i+2];
-      if(w2 && nearWord(w2, WAR_WORDS, 1) && w3 && nearWord(w3, ROOM_WORDS, 1)) { skip = 2; continue; }
-      if(w2 && nearWord(w2, ROOM_WORDS, 1)) { skip = 1; continue; }
-      continue;
-    }
-    out.push(w);
-  }
-  return out.join(' ').trim();
+  const words = normText(t).split(' ').filter(Boolean);
+  return words.filter(w => !isTekkoWakeWord(w)).join(' ').trim();
 }
 
 function collectTranscripts(e) {
@@ -693,7 +665,7 @@ function clearSttUi(keepLive) {
   const live = document.getElementById('vlive');
   if(inp) { inp.value = ''; inp.classList.remove('listening'); }
   if(live && !keepLive) {
-    live.textContent = sttMode === 'wake' ? 'Say “Tekko war room”…' : '';
+    live.textContent = sttMode === 'wake' ? 'Say “Tekko”…' : '';
   }
   sttFinal = '';
   if(sttMode === 'wake') wakeBuffer = '';
@@ -711,7 +683,7 @@ function updateSttDisplay(interim) {
   if(live) {
     live.classList.add('show');
     if(sttMode === 'wake') {
-      live.textContent = hearing || 'Say “Tekko war room”…';
+      live.textContent = hearing || 'Say “Tekko”…';
       live.title = hearing;
     } else if(listening) {
       live.textContent = text || 'Speak your command…';
@@ -722,9 +694,8 @@ function updateSttDisplay(interim) {
   }
   if(sttMode === 'wake') {
     const sc = wakeMatchScore(hearing);
-    if(sc >= WAKE_SCORE_TRIGGER) setEl('vmsg', 'Wake phrase matched — activating…');
-    else if(sc >= 0.45) setEl('vmsg', 'Close match — say TEK-ko WAR ROOM or tap ACTIVATE');
-    else setEl('vmsg', hearing ? 'Hearing…' : 'Say TEK-ko · WAR · ROOM');
+    if(sc >= WAKE_SCORE_TRIGGER) setEl('vmsg', 'Tekko heard — activating…');
+    else setEl('vmsg', hearing ? 'Hearing…' : 'Say Tekko…');
   }
   else if(listening && !sttSilenceTmr) setEl('vmsg', text ? 'Listening…' : 'Say your request…');
   if(listening && text) scheduleAutoSendAfterSilence();
@@ -763,7 +734,7 @@ function resumeWakeListen() {
   wakeArmed = true;
   setMicUi(false);
   updateSttDisplay('');
-  setEl('vmsg', 'Listening for Tekko war room…');
+  setEl('vmsg', 'Listening for Tekko…');
   try { recog.start(); }
   catch(e) { setTimeout(resumeWakeListen, 2000); }
 }
@@ -778,12 +749,10 @@ function onWakeDetected(fullText, forced) {
   pauseRecog();
   sttMode = 'command';
   wakeBuffer = '';
-  const cmd = stripWakePhrase(fullText);
-  setEl('vmsg', 'Assistant activated.');
+  setEl('vmsg', 'Tekko activated.');
   const live = liveEl();
-  if(live) live.textContent = cmd ? 'Sending: '+cmd : 'What would you like?';
-  if(cmd) speak('Got it.', () => ask(cmd));
-  else speak(WAKE_GREETING, () => beginCommandCapture());
+  if(live) live.textContent = 'Speak your command…';
+  speak(WAKE_GREETING, () => beginCommandCapture());
 }
 
 function activateAssistant() {
@@ -1007,7 +976,7 @@ function testSpeech() {
     u.onend = () => {
       wave(false);
       if(btn) btn.classList.remove('on');
-      setEl('vmsg','Speech OK. Say Tekko war room anytime.');
+      setEl('vmsg','Speech OK. Say Tekko to wake anytime.');
       resumeWakeListen();
     };
     u.onerror = () => {
