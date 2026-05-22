@@ -113,8 +113,8 @@ function mk(id,type,labels,datasets,opts={}) {
       maintainAspectRatio:false,
       plugins:{legend:{display:false}},
       scales: type==='doughnut' ? {} : {
-        x:{grid:{color:'rgba(0,255,180,0.04)'},ticks:{color:'rgba(0,255,180,0.35)',font:{size:9},autoSkip:false,maxRotation:0}},
-        y:{grid:{color:'rgba(0,255,180,0.04)'},ticks:{color:'rgba(0,255,180,0.35)',font:{size:9}, ...(opts.ycb?{callback:opts.ycb}:{})}}
+        x:{grid:{color:'rgba(0,255,200,0.05)'},ticks:{color:'rgba(0,255,200,0.4)',font:{family:'JetBrains Mono',size:9},autoSkip:false,maxRotation:0}},
+        y:{grid:{color:'rgba(0,255,200,0.05)'},ticks:{color:'rgba(0,255,200,0.4)',font:{family:'JetBrains Mono',size:9}, ...(opts.ycb?{callback:opts.ycb}:{})}}
       },
       ...opts
     }
@@ -179,7 +179,7 @@ function setCard(i,val,sub,pos,crit) {
 function rebuildOverviewCharts(d) {
   mk('c-donut','doughnut',['Swap','Gift Cards','Virtual Cards','Transfers'],[{
     data:[M.swap||1,M.gc||1,M.vc||1,M.tr||1],
-    backgroundColor:['rgba(0,255,180,0.8)','rgba(0,255,180,0.5)','rgba(0,255,180,0.28)','rgba(0,255,180,0.12)'],
+    backgroundColor:['rgba(0,255,200,0.85)','rgba(0,212,255,0.55)','rgba(123,97,255,0.4)','rgba(0,255,200,0.15)'],
     borderColor:'#060a12',
     borderWidth:3
   }],{cutout:'62%'});
@@ -189,13 +189,13 @@ function rebuildOverviewCharts(d) {
   mk('c-trend','line',labels,[{
     label:'MRR',
     data:vals,
-    borderColor:'#00ffb4',
-    backgroundColor:'rgba(0,255,180,0.05)',
+    borderColor:'#00ffc8',
+    backgroundColor:'rgba(0,255,200,0.06)',
     fill:true,
     tension:0.4,
     pointRadius:2,
     borderWidth:1.5,
-    pointBackgroundColor:'#00ffb4'
+    pointBackgroundColor:'#00ffc8'
   }],{ycb:v=>'₦'+(v/1000000).toFixed(1)+'M'});
 }
 
@@ -431,6 +431,14 @@ function bootWar() {
     if(live) { live.classList.add('show'); live.textContent = 'Say “Tekko war room”…'; }
     resumeWakeListen();
   }, 1200);
+  if(!window._chartResize) {
+    window._chartResize = true;
+    let resizeTmr;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTmr);
+      resizeTmr = setTimeout(() => Object.values(charts).forEach(c => { try { c.resize(); } catch(e) {} }), 150);
+    });
+  }
 }
 
 // Warroom AI (backend OpenAI + tools)

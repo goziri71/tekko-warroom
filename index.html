@@ -2,18 +2,28 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Tekko Revenue War Room</title>
 <meta name="description" content="Tekko admin revenue intelligence dashboard">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Orbitron:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
+<div class="ambient" aria-hidden="true">
+  <div class="orb orb-a"></div>
+  <div class="orb orb-b"></div>
+  <div class="orb orb-c"></div>
+  <div class="grid-floor"></div>
+</div>
 
 <div id="sl" class="screen active">
-  <div class="login-wrap">
+  <div class="login-wrap glass-panel">
     <div class="lscan"></div>
-    <div class="l-logo">Tekko</div>
-    <div class="l-sub">Revenue War Room · Admin Only</div>
+    <div class="l-glow" aria-hidden="true"></div>
+    <div class="l-logo">TEKKO</div>
+    <div class="l-sub">Revenue War Room · Secure Access</div>
     <div class="l-card">
       <label class="l-lbl">Admin email</label>
       <input class="l-inp" id="le" type="email" placeholder="admin@tekko.com" autocomplete="email">
@@ -21,7 +31,7 @@
       <input class="l-inp" id="lp" type="password" placeholder="••••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()">
       <div class="twofa-wrap" id="t2w">
         <label class="l-lbl" for="l2">2FA code</label>
-        <input class="l-inp" id="l2" name="twoFactorToken" type="text" inputmode="numeric" maxlength="6" placeholder="6-digit code" style="letter-spacing:0.3em;font-size:16px" autocomplete="one-time-code" required onkeydown="if(event.key==='Enter')login()">
+        <input class="l-inp l-inp-2fa" id="l2" name="twoFactorToken" type="text" inputmode="numeric" maxlength="6" placeholder="6-digit code" autocomplete="one-time-code" required onkeydown="if(event.key==='Enter')login()">
       </div>
       <button class="l-btn" id="lbtn" onclick="login()">Authenticate</button>
       <div class="l-err" id="lerr"></div>
@@ -32,12 +42,13 @@
 </div>
 
 <div id="sw" class="screen">
-<div class="war">
+<div class="war glass-panel">
   <div class="wscan"></div>
+  <div class="war-aurora" aria-hidden="true"></div>
   <div class="mflash" id="mf"></div>
 
   <div class="topbar">
-    <div class="tlogo">Tekko · Revenue War Room</div>
+    <div class="tlogo"><span class="tmark">◆</span> Tekko <span class="tlogo-light">War Room</span></div>
     <div class="tright">
       <div class="upill"><span class="udot"></span><span id="upill-txt">—</span></div>
       <div class="tclock" id="clk">--:--:--</div>
@@ -57,10 +68,10 @@
   </div>
 
   <div class="mstrip" id="mstrip">
-    <div class="mc"><div class="ml">Total MRR</div><div class="mv" id="m0">—</div><div class="ms" id="m0s">loading...</div><div class="mbar" id="mb0" style="width:0"></div></div>
+    <div class="mc mc-hero"><div class="ml">Total MRR</div><div class="mv" id="m0">—</div><div class="ms" id="m0s">loading...</div><div class="mbar" id="mb0" style="width:0"></div></div>
     <div class="mc"><div class="ml">Revenue today</div><div class="mv" id="m1">—</div><div class="ms" id="m1s">loading...</div><div class="mbar" id="mb1" style="width:0"></div></div>
     <div class="mc"><div class="ml">Active users</div><div class="mv" id="m2">—</div><div class="ms" id="m2s">loading...</div><div class="mbar" id="mb2" style="width:0"></div></div>
-    <div class="mc"><div class="ml">Churn rate</div><div class="mv" id="m3">—</div><div class="ms" id="m3s">loading...</div><div class="mbar" id="mb3" style="width:0;background:var(--r)"></div></div>
+    <div class="mc mc-risk"><div class="ml">Churn rate</div><div class="mv" id="m3">—</div><div class="ms" id="m3s">loading...</div><div class="mbar" id="mb3" style="width:0"></div></div>
   </div>
 
   <div class="alerts">
@@ -76,55 +87,55 @@
 
       <div class="panel active" id="p-overview">
         <div class="shd">Revenue by product · NGN via Brais rates</div>
-        <div class="cw" style="height:150px"><canvas id="c-donut"></canvas></div>
+        <div class="cw cw-lg"><canvas id="c-donut"></canvas></div>
         <div class="shd">MRR trend · 12 months</div>
-        <div class="cw" style="height:110px"><canvas id="c-trend"></canvas></div>
+        <div class="cw cw-md"><canvas id="c-trend"></canvas></div>
       </div>
 
       <div class="panel" id="p-swap">
         <div class="shd">Swap metrics</div>
         <div class="kv-grid" id="kv-swap"></div>
         <div class="shd">Top pairs · volume &amp; fees</div>
-        <table class="tbl" id="tbl-swap"><thead><tr><th>Pair</th><th>Volume</th><th>Fees</th><th>Count</th></tr></thead><tbody></tbody></table>
+        <div class="tbl-scroll"><table class="tbl" id="tbl-swap"><thead><tr><th>Pair</th><th>Volume</th><th>Fees</th><th>Count</th></tr></thead><tbody></tbody></table></div>
         <div class="shd">Hourly volume · today</div>
-        <div class="cw" style="height:100px"><canvas id="c-swap-hourly"></canvas></div>
+        <div class="cw cw-sm"><canvas id="c-swap-hourly"></canvas></div>
       </div>
 
       <div class="panel" id="p-giftcard">
         <div class="shd">Gift card metrics</div>
         <div class="kv-grid" id="kv-gc"></div>
         <div class="shd">Top cards · volume &amp; margin</div>
-        <table class="tbl" id="tbl-gc"><thead><tr><th>Brand</th><th>Count</th><th>Volume</th><th>Margin</th></tr></thead><tbody></tbody></table>
+        <div class="tbl-scroll"><table class="tbl" id="tbl-gc"><thead><tr><th>Brand</th><th>Count</th><th>Volume</th><th>Margin</th></tr></thead><tbody></tbody></table></div>
         <div class="shd">Status breakdown</div>
-        <div class="cw" style="height:90px"><canvas id="c-gc-status"></canvas></div>
+        <div class="cw cw-sm"><canvas id="c-gc-status"></canvas></div>
       </div>
 
       <div class="panel" id="p-virtualcard">
         <div class="shd">Virtual card metrics</div>
         <div class="kv-grid" id="kv-vc"></div>
         <div class="shd">Revenue by type</div>
-        <div class="cw" style="height:110px"><canvas id="c-vc-rev"></canvas></div>
+        <div class="cw cw-md"><canvas id="c-vc-rev"></canvas></div>
       </div>
 
       <div class="panel" id="p-transfers">
         <div class="shd">Transfer metrics</div>
         <div class="kv-grid" id="kv-tr"></div>
         <div class="shd">Revenue by type</div>
-        <div class="cw" style="height:110px"><canvas id="c-tr-rev"></canvas></div>
+        <div class="cw cw-md"><canvas id="c-tr-rev"></canvas></div>
       </div>
 
       <div class="panel" id="p-wallet">
         <div class="shd">Wallet overview</div>
         <div class="kv-grid" id="kv-wallet"></div>
         <div class="shd">Currency split</div>
-        <div class="cw" style="height:110px"><canvas id="c-wallet"></canvas></div>
+        <div class="cw cw-md"><canvas id="c-wallet"></canvas></div>
       </div>
 
       <div class="panel" id="p-users">
         <div class="shd">User growth</div>
         <div class="kv-grid" id="kv-users"></div>
         <div class="shd">Growth · 12 months</div>
-        <div class="cw" style="height:120px"><canvas id="c-users"></canvas></div>
+        <div class="cw cw-md"><canvas id="c-users"></canvas></div>
       </div>
 
       <div class="panel" id="p-guardian">
@@ -147,17 +158,22 @@
           <div class="g-item"><span>SSE stream</span><span class="g-badge g-ok" id="g-sse">checking...</span></div>
         </div>
         <div class="shd">Recent failures</div>
-        <div id="g-feed" style="font-size:10px;color:var(--g3)">Monitoring...</div>
+        <div id="g-feed" class="g-feed-txt">Monitoring...</div>
       </div>
 
     </div>
 
     <div class="rc">
-      <div class="feed">
-        <div class="shd" style="margin-bottom:6px">Live transactions</div>
+      <div class="feed glass-inset">
+        <div class="shd shd-feed">Live transactions</div>
         <div id="feed"></div>
       </div>
-      <div class="vzone">
+      <div class="vzone vzone-deck">
+        <div class="deck-head">
+          <span class="deck-icon">◎</span>
+          <span class="deck-title">Neural Command</span>
+          <span class="deck-pulse"></span>
+        </div>
         <div class="wf" id="wf">
           <div class="wb" id="w1" style="height:4px"></div><div class="wb" id="w2" style="height:9px"></div><div class="wb" id="w3" style="height:14px"></div><div class="wb" id="w4" style="height:10px"></div><div class="wb" id="w5" style="height:6px"></div><div class="wb" id="w6" style="height:12px"></div><div class="wb" id="w7" style="height:8px"></div><div class="wb" id="w8" style="height:4px"></div>
         </div>
