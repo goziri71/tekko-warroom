@@ -6,6 +6,7 @@ let tok = null, usr = null, charts = {}, feedTmr = null, sseSrc = null, sessTmr 
 let M = {mrr:0,today:0,users:0,churn:0,swap:0,gc:0,vc:0,tr:0,new_users:0,total_users:0,arr:0};
 let guardianData = {stuck:0,swapFail:0,fiatMiss:0,gcStuck:0,vcFail:0,trFail:0};
 let chatHistory = [], chatBusy = false;
+let metricsGreeted = false, pendingSpeakEnd = null, commandIdleTmr = null;
 const CHAT_HIST_MAX = 20;
 let warroomStatus = { enabled: true, webResearch: false, model: null };
 const RESEARCH_TRIGGER_RE = /search\s+(the\s+)?(internet|web|online)|search\s+(the\s+)?net|search\s+online|web\s+search|look\s+(it\s+)?up\s+online|google\s+(this|it|for)|browse\s+the\s+(web|internet)|surge\s+the\s+internet|research\s+online/i;
@@ -73,8 +74,10 @@ async function login() {
 
 function logout() {
   stopAlwaysListen();
+  stopSpeak();
   tok = null; usr = null;
   chatHistory = []; chatBusy = false;
+  metricsGreeted = false;
   warroomStatus = { enabled: true, webResearch: false, model: null };
   clearInterval(feedTmr);clearTimeout(sessTmr);clearTimeout(warnTmr);
   if(sseSrc){sseSrc.close();sseSrc=null;}
@@ -121,8 +124,9 @@ function mk(id,type,labels,datasets,opts={}) {
   });
 }
 
-// Fetch All Data
-async function fetchAll() {
+// Fetch All Data (silent: no voice — avoids cutting AI replies on refresh)
+async function fetchAll(opts = {}) {
+  const silent = !!opts.silent;
   setEl('cpill','&#9675; FETCHING...');
   document.getElementById('cpill').className='cpill demo';
   const [ov,sw,gc,vc,tr,wa,us,he] = await Promise.allSettled([
@@ -166,7 +170,10 @@ async function fetchAll() {
   document.getElementById('cpill').className='cpill live';
   setEl('cpill','&#9679; LIVE · TEKKO · NGN via Brais');
   runGuardian();
-  speak('Tekko war room online. Live data loaded. MRR is '+ngn(M.mrr)+'.');
+  if(!silent && !metricsGreeted && !chatBusy && !ttsActive) {
+    metricsGreeted = true;
+    speak('Tekko war room online. Live data loaded. MRR is '+ngn(M.mrr)+'.');
+  }
 }
 
 function setCard(i,val,sub,pos,crit) {
@@ -343,7 +350,7 @@ function runGuardian() {
     if(!el)return;
     if(c.v===0){el.textContent='OK';el.className='g-badge g-ok';}
     else if(c.v<=c.warn){el.textContent=c.v+' '+c.label;el.className='g-badge g-warn';}
-    else{el.textContent=c.v+' '+c.label+'!';el.className='g-badge g-err';show('a-stuck');speak('Guardian alert: '+c.v+' '+c.label+' detected.');}
+    else{el.textContent=c.v+' '+c.label+'!';el.className='g-badge g-err';show('a-stuck');if(!chatBusy&&!ttsActive)speak('Guardian alert: '+c.v+' '+c.label+' detected.');}
   });
   const gf = document.getElementById('g-feed');
   if(gf){
@@ -422,7 +429,7 @@ function bootWar() {
   feedTmr = setInterval(spawnFeed, Math.random()*1200+700);
   spawnFeed();
   fetchAll();
-  setInterval(fetchAll,60000);
+  setInterval(() => fetchAll({ silent: true }), 60000);
   startSSE();
   startSessionTimers();
   checkWarroomStatus();
@@ -564,6 +571,8 @@ let utt = null, recog = null, listening = false, sttFinal = '', sttSilenceTmr = 
 let sttMode = 'off', wakeEnabled = false, wakeArmed = false, wakeBuffer = '', wakeCooldown = false;
 let sttCaptureFresh = false, lastScheduledText = '', ttsActive = false, recogStarting = false;
 const STT_SILENCE_MS = 2000;
+const COMMAND_IDLE_MS = 90000;
+const WAKE_COOLDOWN_MS = 2000;
 const WAKE_GREETING = 'What can I do for you today?';
 const WAKE_SCORE_TRIGGER = 1;
 const TEKKO_WAKE = ['tekko','techo','tico','taco','teco'];
@@ -613,6 +622,40 @@ function clearSttSilenceTimer() {
   if(sttSilenceTmr) { clearTimeout(sttSilenceTmr); sttSilenceTmr = null; }
 }
 
+function clearCommandIdleTmr() {
+  if(commandIdleTmr) { clearTimeout(commandIdleTmr); commandIdleTmr = null; }
+}
+
+function armCommandIdleTmr() {
+  clearCommandIdleTmr();
+  commandIdleTmr = setTimeout(() => {
+    commandIdleTmr = null;
+    if(chatBusy || ttsActive) return;
+    if(listening) endCommandCapture({ autoSend: false });
+    resumeWakeListen();
+    setEl('vmsg', 'Idle — say Tekko for next command.');
+  }, COMMAND_IDLE_MS);
+}
+
+function flushSpeakCallback() {
+  if(!pendingSpeakEnd) return;
+  const cb = pendingSpeakEnd;
+  pendingSpeakEnd = null;
+  try { cb(); } catch(e) {}
+}
+
+function listenForNextCommand() {
+  if(!tok || !recog || !wakeEnabled || chatBusy || ttsActive) {
+    resumeWakeListen();
+    return;
+  }
+  setTimeout(() => {
+    if(chatBusy || ttsActive) return;
+    beginCommandCapture();
+    setEl('vmsg', 'Speak your next command ('+(STT_SILENCE_MS/1000)+'s pause to send).');
+  }, 400);
+}
+
 function getCommandText() {
   return (sttFinal + (document.getElementById('vinp')?.value || '')).trim();
 }
@@ -625,9 +668,9 @@ function scheduleAutoSendAfterSilence() {
     lastScheduledText = '';
     return;
   }
-  if(text === lastScheduledText && sttSilenceTmr) return;
   lastScheduledText = text;
   clearSttSilenceTimer();
+  armCommandIdleTmr();
   setEl('vmsg', 'Pause ~'+(STT_SILENCE_MS/1000)+'s to auto-send…');
   sttSilenceTmr = setTimeout(() => {
     sttSilenceTmr = null;
@@ -675,7 +718,10 @@ function updateSttDisplay(interim) {
     else setEl('vmsg', hearing ? 'Hearing…' : 'Say Tekko…');
   }
   else if(listening && !sttSilenceTmr) setEl('vmsg', text ? 'Listening…' : 'Say your request…');
-  if(listening && text) scheduleAutoSendAfterSilence();
+  if(listening && text) {
+    scheduleAutoSendAfterSilence();
+    armCommandIdleTmr();
+  }
 }
 
 function setMicUi(active, label) {
@@ -715,6 +761,7 @@ function stopAlwaysListen() {
   sttMode = 'off';
   listening = false;
   clearSttSilenceTimer();
+  clearCommandIdleTmr();
   pauseRecog();
   setMicUi(false);
   wave(false);
@@ -739,7 +786,7 @@ function onWakeDetected(fullText, forced) {
   if(wakeCooldown || chatBusy) return;
   if(!forced && sttMode !== 'wake') return;
   wakeCooldown = true;
-  setTimeout(() => { wakeCooldown = false; }, 8000);
+  setTimeout(() => { wakeCooldown = false; }, WAKE_COOLDOWN_MS);
   pauseRecog();
   sttMode = 'command';
   wakeBuffer = '';
@@ -759,6 +806,7 @@ function activateAssistant() {
 function beginCommandCapture() {
   if(!recog || chatBusy) { resumeWakeListen(); return; }
   if(ttsActive) { setTimeout(beginCommandCapture, 200); return; }
+  clearCommandIdleTmr();
   pauseRecog();
   sttMode = 'command';
   listening = true;
@@ -772,6 +820,7 @@ function beginCommandCapture() {
   wave(true);
   setEl('vmsg', 'Speak now — sends after '+STT_SILENCE_MS/1000+'s pause.');
   sttCaptureFresh = true;
+  armCommandIdleTmr();
   safeStartRecog(200);
 }
 
@@ -788,9 +837,15 @@ function endCommandCapture(opts = {}) {
   const text = getCommandText() || (inp?.value || '').trim();
   const wasManual = sttMode === 'manual';
   if(autoSend && text) {
+    clearCommandIdleTmr();
     clearSttUi();
-    setEl('vmsg', 'Sending…');
     setMicUi(false);
+    if(chatBusy) {
+      setEl('vmsg', 'Still processing last request…');
+      resumeWakeListen();
+      return;
+    }
+    setEl('vmsg', 'Sending…');
     ask(text);
     return;
   }
@@ -899,13 +954,23 @@ function wave(on) {
 }
 
 function speak(text, onEnd, skipWakePause) {
-  if(!synth || !text?.trim()) { onEnd?.(); return; }
+  flushSpeakCallback();
+  if(!synth || !text?.trim()) {
+    pendingSpeakEnd = onEnd || null;
+    flushSpeakCallback();
+    return;
+  }
   if(!skipWakePause) pauseRecog();
+  pendingSpeakEnd = onEnd || null;
   const run = () => {
     ttsActive = true;
     synth.cancel();
     setTimeout(() => {
-      if(!synth) { ttsActive = false; onEnd?.(); return; }
+      if(!synth) {
+        ttsActive = false;
+        flushSpeakCallback();
+        return;
+      }
       utt = new SpeechSynthesisUtterance(text.trim());
       utt.rate = 1;
       utt.pitch = 1;
@@ -916,8 +981,9 @@ function speak(text, onEnd, skipWakePause) {
       const finish = () => {
         wave(false);
         ttsActive = false;
-        if(onEnd) onEnd();
-        else if(wakeEnabled && tok && !chatBusy && !listening) setTimeout(resumeWakeListen, 600);
+        const hadCallback = !!pendingSpeakEnd;
+        flushSpeakCallback();
+        if(!hadCallback && wakeEnabled && tok && !chatBusy && !listening) setTimeout(resumeWakeListen, 600);
       };
       utt.onstart = () => wave(true);
       utt.onend = finish;
@@ -934,6 +1000,7 @@ function stopSpeak() {
   if(synth) synth.cancel();
   ttsActive = false;
   wave(false);
+  flushSpeakCallback();
   const tb = document.getElementById('vtest');
   if(tb) tb.classList.remove('on');
 }
@@ -1011,7 +1078,7 @@ async function ask(q, modeOverride) {
   if(mode && mode !== 'auto') body.mode = mode;
   try {
     const {r,d} = await warroomFetch('/api/v1/admin/warroom/chat', body);
-    if(r.status===401){chatHistory.pop();logout();return;}
+    if(r.status===401){chatHistory.pop();setChatBusy(false);wave(false);logout();return;}
     if(!r.ok || d.success===false) {
       chatHistory.pop();
       throw new Error('AI chat ('+r.status+'): '+apiErrMessage(d,r.status));
@@ -1025,14 +1092,16 @@ async function ask(q, modeOverride) {
     renderToolResults(data);
     speak(reply, () => {
       setChatBusy(false);
-      if(wakeEnabled && tok) setTimeout(resumeWakeListen, 800);
+      wave(false);
+      if(wakeEnabled && tok) listenForNextCommand();
     });
   } catch(e) {
     const err = e.message || 'AI error — check connection and try again.';
     setEl('vmsg', err);
+    wave(false);
     speak(err.length > 180 ? 'AI request failed.' : err, () => {
       setChatBusy(false);
-      if(wakeEnabled && tok) setTimeout(resumeWakeListen, 800);
+      if(wakeEnabled && tok) listenForNextCommand();
     });
   }
 }
