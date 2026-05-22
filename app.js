@@ -18,7 +18,17 @@ const num = v => v||v===0 ? Number(v).toLocaleString() : '—';
 const flash = id => {const e=document.getElementById(id);if(!e)return;e.classList.add('flash');setTimeout(()=>e.classList.remove('flash'),500);};
 const show = id => document.getElementById(id)?.classList.add('show');
 const hide = id => document.getElementById(id)?.classList.remove('show');
-const setEl = (id,v) => {const e=document.getElementById(id);if(e)e.textContent=v;};
+const setEl = (id,v) => {
+  const e=document.getElementById(id);
+  if(!e) return;
+  if(id==='vmsg') {
+    let inner=e.querySelector('.vmsg-inner');
+    if(!inner){inner=document.createElement('span');inner.className='vmsg-inner';e.textContent='';e.appendChild(inner);}
+    inner.textContent=v;
+    return;
+  }
+  e.textContent=v;
+};
 const hdl = (id,ok,warn) => {const e=document.getElementById(id);if(!e)return;e.className='hdl '+(ok?'ok':warn?'warn':'err');};
 
 // Authentication
@@ -60,7 +70,7 @@ async function login() {
 }
 
 function logout() {
-  stopListening();
+  stopAlwaysListen();
   tok = null; usr = null;
   chatHistory = []; chatBusy = false;
   clearInterval(feedTmr);clearTimeout(sessTmr);clearTimeout(warnTmr);
@@ -413,6 +423,7 @@ function bootWar() {
   startSSE();
   startSessionTimers();
   checkWarroomStatus();
+  setTimeout(() => resumeWakeListen(), 1200);
 }
 
 // Warroom AI (backend OpenAI + tools)
@@ -493,40 +504,135 @@ function renderToolResults(data) {
   el.classList.add('show');
 }
 
-// Voice Assistant (speech-to-text + text-to-speech)
+// Voice Assistant — always-on wake word + command mode
 const synth = window.speechSynthesis;
-let utt = null, recog = null, listening = false, sttFinal = '';
+let utt = null, recog = null, listening = false, sttFinal = '', sttSilenceTmr = null;
+let sttMode = 'off', wakeEnabled = false, wakeArmed = false;
+const STT_SILENCE_MS = 2500;
+const WAKE_RE = /tekko\s*war\s*room/i;
+const WAKE_GREETING = 'Tekko war room online. What would you like to know?';
 
-function updateSttDisplay(interim) {
+function hasWakePhrase(t) { return WAKE_RE.test(t); }
+function stripWakePhrase(t) { return t.replace(WAKE_RE, ' ').replace(/\s+/g, ' ').trim(); }
+
+function clearSttSilenceTimer() {
+  if(sttSilenceTmr) { clearTimeout(sttSilenceTmr); sttSilenceTmr = null; }
+}
+
+function resetSttSilenceTimer() {
+  clearSttSilenceTimer();
+  if(!listening || sttMode === 'wake') return;
+  const text = (sttFinal + (document.getElementById('vinp')?.value || '')).trim();
+  if(!text) return;
+  sttSilenceTmr = setTimeout(() => endCommandCapture({autoSend:true}), STT_SILENCE_MS);
+}
+
+function clearSttUi() {
+  const inp = document.getElementById('vinp');
+  const live = document.getElementById('vlive');
+  if(inp) { inp.value = ''; inp.classList.remove('listening'); }
+  if(live) { live.textContent = ''; live.classList.remove('show'); }
+  sttFinal = '';
+}
+
+function setMicUi(active, label) {
+  const btn = document.getElementById('mbtn');
+  if(!btn) return;
+  btn.classList.toggle('on', active && sttMode !== 'wake');
+  btn.classList.toggle('wake-on', wakeArmed && !active);
+  btn.textContent = label || (active ? '■ STOP' : '● SPEAK');
+}
+
+function pauseRecog() {
+  wakeArmed = false;
+  try { recog?.stop(); } catch(e) {}
+}
+
+function updateCommandDisplay(interim) {
   const inp = document.getElementById('vinp');
   const live = document.getElementById('vlive');
   const text = (sttFinal + interim).trim();
-  if(inp) {
-    inp.value = text;
-    inp.classList.toggle('listening', listening);
-  }
-  if(live) {
-    live.textContent = text || (listening ? 'Start speaking…' : '');
-    live.classList.toggle('show', listening || !!text);
-  }
-  if(listening) {
-    setEl('vmsg', text ? 'Listening: '+text : 'Listening… speak now (click SPEAK to stop)');
+  if(inp) { inp.value = text; inp.classList.toggle('listening', listening); }
+  if(live) { live.textContent = text; live.classList.toggle('show', listening); live.title = text; }
+  if(listening) setEl('vmsg', text ? 'Command…' : 'Say your request…');
+  if(text) resetSttSilenceTimer();
+}
+
+function stopAlwaysListen() {
+  wakeEnabled = false;
+  wakeArmed = false;
+  sttMode = 'off';
+  listening = false;
+  clearSttSilenceTimer();
+  pauseRecog();
+  setMicUi(false);
+  wave(false);
+}
+
+function resumeWakeListen() {
+  if(!tok || !recog || !wakeEnabled || chatBusy) return;
+  sttMode = 'wake';
+  listening = false;
+  clearSttUi();
+  wakeArmed = true;
+  setMicUi(false);
+  setEl('vmsg', 'Listening for Tekko war room…');
+  try { recog.start(); }
+  catch(e) { setTimeout(resumeWakeListen, 2000); }
+}
+
+function onWakeDetected(fullText) {
+  if(chatBusy || sttMode !== 'wake') return;
+  pauseRecog();
+  sttMode = 'command';
+  const cmd = stripWakePhrase(fullText);
+  if(cmd) speak('Got it.', () => ask(cmd));
+  else speak(WAKE_GREETING, () => beginCommandCapture());
+}
+
+function beginCommandCapture() {
+  if(!recog || chatBusy) { resumeWakeListen(); return; }
+  pauseRecog();
+  sttMode = 'command';
+  listening = true;
+  sttFinal = '';
+  clearSttUi();
+  setMicUi(true, '■ STOP');
+  wave(true);
+  setEl('vmsg', 'Your command… pause to send.');
+  try { recog.start(); }
+  catch(e) {
+    listening = false;
+    setEl('vmsg', 'Mic failed.');
+    resumeWakeListen();
   }
 }
 
-function stopListening() {
-  if(!listening) return;
+function endCommandCapture(opts = {}) {
+  const autoSend = !!opts.autoSend;
+  if(!listening && sttMode !== 'command' && sttMode !== 'manual') return;
   listening = false;
-  try { recog?.stop(); } catch(e) {}
-  const btn = document.getElementById('mbtn');
+  clearSttSilenceTimer();
+  pauseRecog();
   const inp = document.getElementById('vinp');
-  if(btn) { btn.classList.remove('on'); btn.textContent = '● SPEAK'; }
   if(inp) inp.classList.remove('listening');
   wave(false);
-  const text = (inp?.value || '').trim();
-  if(text) setEl('vmsg', 'Heard: "'+text+'" — press Enter to send, or edit first.');
-  else setEl('vmsg', 'No speech detected. Try again or type your question.');
+  const text = (inp?.value || sttFinal || '').trim();
+  const wasManual = sttMode === 'manual';
+  if(autoSend && text) {
+    clearSttUi();
+    setEl('vmsg', 'Sending…');
+    setMicUi(false);
+    ask(text);
+    return;
+  }
+  clearSttUi();
+  setMicUi(false);
+  if(!wasManual && !text) setEl('vmsg', 'No command.');
+  if(!autoSend && !chatBusy) resumeWakeListen();
 }
+
+function stopListening() { endCommandCapture({autoSend:false}); }
 
 if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -535,58 +641,62 @@ if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   recog.interimResults = true;
   recog.lang = 'en-US';
   recog.onstart = () => {
+    if(sttMode === 'wake') { wakeArmed = true; setMicUi(false); return; }
     sttFinal = '';
-    updateSttDisplay('');
+    updateCommandDisplay('');
   };
   recog.onresult = e => {
-    let interim = '';
+    let interim = '', final = '';
     for(let i = e.resultIndex; i < e.results.length; i++) {
       const t = e.results[i][0].transcript;
-      if(e.results[i].isFinal) sttFinal += t;
+      if(e.results[i].isFinal) final += t;
       else interim += t;
     }
-    updateSttDisplay(interim);
+    if(sttMode === 'wake') {
+      let full = '';
+      for(let i = 0; i < e.results.length; i++) full += e.results[i][0].transcript;
+      if(hasWakePhrase(full)) onWakeDetected(full);
+      return;
+    }
+    sttFinal += final;
+    updateCommandDisplay(interim);
   };
   recog.onerror = e => {
-    const msg = e.error === 'not-allowed' ? 'Microphone blocked — allow mic access for this site.'
-      : e.error === 'no-speech' ? 'No speech heard. Try again closer to the mic.'
-      : 'Speech error: '+(e.error||'unknown');
-    setEl('vmsg', msg);
-    stopListening();
+    if(sttMode === 'wake') {
+      if(e.error === 'not-allowed') { wakeEnabled = false; setEl('vmsg', 'Mic blocked.'); }
+      else if(e.error !== 'no-speech') setTimeout(resumeWakeListen, 2000);
+      return;
+    }
+    if(e.error === 'no-speech' && (sttFinal.trim() || document.getElementById('vinp')?.value?.trim())) return;
+    endCommandCapture({autoSend:false});
+    setEl('vmsg', e.error === 'not-allowed' ? 'Mic blocked.' : 'Mic error.');
   };
   recog.onend = () => {
+    if(sttMode === 'wake' && wakeEnabled && !chatBusy) {
+      wakeArmed = true;
+      try { recog.start(); } catch(e) { setTimeout(resumeWakeListen, 1500); }
+      return;
+    }
     if(listening) {
-      try { recog.start(); } catch(e) { stopListening(); }
+      try { recog.start(); } catch(err) { endCommandCapture({autoSend:false}); }
     }
   };
+  wakeEnabled = true;
 } else {
-  setEl('vmsg', 'Speech-to-text needs Chrome or Edge (HTTPS). Type your question instead.');
+  setEl('vmsg', 'Voice needs Chrome (HTTPS).');
 }
 
 function toggleMic() {
   if(!recog) {
-    setEl('vmsg', 'Speech-to-text not supported. Use Chrome or Edge on HTTPS.');
-    speak('Use Chrome for voice input.');
+    setEl('vmsg', 'Voice needs Chrome on HTTPS.');
+    speak('Use Chrome for voice input.', null, true);
     return;
   }
-  if(listening) { stopListening(); return; }
+  if(listening) { endCommandCapture({autoSend:true}); return; }
   stopSpeak();
-  sttFinal = '';
-  const inp = document.getElementById('vinp');
-  if(inp) inp.value = '';
-  updateSttDisplay('');
-  listening = true;
-  const btn = document.getElementById('mbtn');
-  if(btn) { btn.classList.add('on'); btn.textContent = '■ STOP'; }
-  wave(true);
-  setEl('vmsg', 'Listening… speak now. Your words appear in the box as you talk.');
-  try { recog.start(); }
-  catch(e) {
-    listening = false;
-    setEl('vmsg', 'Could not start microphone. Click SPEAK again.');
-    if(btn) { btn.classList.remove('on'); btn.textContent = '● SPEAK'; }
-    wave(false);
-  }
+  pauseRecog();
+  sttMode = 'manual';
+  beginCommandCapture();
 }
 
 function wave(on) {
@@ -598,8 +708,9 @@ function wave(on) {
   }
 }
 
-function speak(text) {
-  if(!synth || !text?.trim()) return;
+function speak(text, onEnd, skipWakePause) {
+  if(!synth || !text?.trim()) { onEnd?.(); return; }
+  if(!skipWakePause) pauseRecog();
   const say = () => {
     synth.cancel();
     utt = new SpeechSynthesisUtterance(text.trim());
@@ -609,8 +720,20 @@ function speak(text) {
     const voice = voices.find(v=>v.lang.startsWith('en')) || voices[0];
     if(voice) utt.voice = voice;
     utt.onstart = () => wave(true);
-    utt.onend = () => wave(false);
-    utt.onerror = () => wave(false);
+    utt.onend = () => {
+      wave(false);
+      onEnd?.();
+      setTimeout(() => {
+        if(wakeEnabled && tok && !chatBusy && !listening) resumeWakeListen();
+      }, 350);
+    };
+    utt.onerror = () => {
+      wave(false);
+      onEnd?.();
+      setTimeout(() => {
+        if(wakeEnabled && tok && !chatBusy && !listening) resumeWakeListen();
+      }, 350);
+    };
     synth.speak(utt);
     if(synth.paused) synth.resume();
   };
@@ -630,6 +753,7 @@ const SPEECH_TEST_PHRASE = 'Tekko war room speech test. If you hear this, audio 
 
 function testSpeech() {
   const btn = document.getElementById('vtest');
+  pauseRecog();
   stopSpeak();
   if(!synth) {
     setEl('vmsg','Speech not supported in this browser. Use Chrome or Edge over HTTPS.');
@@ -651,12 +775,14 @@ function testSpeech() {
     u.onend = () => {
       wave(false);
       if(btn) btn.classList.remove('on');
-      setEl('vmsg','Speech test OK. If you heard the phrase, audio works — type a question above or use MRR / SPEAK.');
+      setEl('vmsg','Speech OK. Say Tekko war room anytime.');
+      resumeWakeListen();
     };
-    u.onerror = e => {
+    u.onerror = () => {
       wave(false);
       if(btn) btn.classList.remove('on');
-      setEl('vmsg','Speech test failed ('+(e.error||'blocked')+'). Unmute tab, allow sound, use Chrome on HTTPS.');
+      setEl('vmsg','Speech test failed.');
+      resumeWakeListen();
     };
     synth.speak(u);
     if(synth.paused) synth.resume();
@@ -668,13 +794,12 @@ function testSpeech() {
 async function ask(q) {
   if(!q?.trim()||chatBusy) return;
   if(!tok) { setEl('vmsg','Session expired. Please log in again.'); return; }
-  stopListening();
+  pauseRecog();
+  listening = false;
+  clearSttSilenceTimer();
+  setMicUi(false);
   const message = q.trim();
-  const inp = document.getElementById('vinp');
-  const live = document.getElementById('vlive');
-  if(inp) inp.value = '';
-  if(live) { live.textContent = ''; live.classList.remove('show'); }
-  sttFinal = '';
+  clearSttUi();
   setChatBusy(true);
   setEl('vmsg','Querying Tekko AI...');
   renderToolResults(null);
@@ -695,14 +820,11 @@ async function ask(q) {
     if(chatHistory.length>CHAT_HIST_MAX) chatHistory.splice(0, chatHistory.length-CHAT_HIST_MAX);
     setEl('vmsg',reply);
     renderToolResults(data);
-    speak(reply);
+    speak(reply, () => setChatBusy(false));
   } catch(e) {
     const err = e.message || 'AI error — check connection and try again.';
     setEl('vmsg', err);
-    speak(err.length > 180 ? 'AI request failed. See message on screen.' : err);
-    wave(false);
-  } finally {
-    setChatBusy(false);
+    speak(err.length > 180 ? 'AI request failed.' : err, () => setChatBusy(false));
   }
 }
 

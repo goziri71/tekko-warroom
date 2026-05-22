@@ -72,7 +72,8 @@ body{font-family:'Courier New',monospace;background:#000;margin:0;padding:20px}
 .fi{display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(0,255,180,0.04);font-size:10px;animation:tin 0.35s ease}
 @keyframes tin{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:none}}
 .vzone{padding:10px 12px;border-top:1px solid var(--bd)}
-.vmsg{font-size:11px;color:var(--g2);line-height:1.6;min-height:44px;padding:8px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--g5);margin-bottom:7px}
+.vmsg{font-size:11px;color:var(--g2);line-height:1.45;height:40px;padding:8px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--g5);margin-bottom:7px;overflow:hidden;display:flex;align-items:center}
+.vmsg-inner{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%}
 .vtools{font-size:9px;color:var(--g3);max-height:140px;overflow:auto;margin-bottom:7px;padding:6px 8px;border:1px solid var(--bd);border-radius:6px;background:rgba(0,0,0,0.25);display:none}
 .vtools.show{display:block}
 .vtags{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
@@ -89,13 +90,14 @@ body{font-family:'Courier New',monospace;background:#000;margin:0;padding:20px}
 .vbtn-test.on{background:rgba(0,255,180,0.2);box-shadow:0 0 12px rgba(0,255,180,0.15)}
 .vhint{font-size:9px;color:rgba(0,255,180,0.35);margin-bottom:6px;line-height:1.4}
 .vhint strong{color:var(--g3);font-weight:500}
-.vlive{display:none;min-height:28px;margin-bottom:6px;padding:6px 10px;border:1px dashed var(--g3);border-radius:8px;background:rgba(0,255,180,0.04);font-size:11px;color:var(--g);line-height:1.5;word-break:break-word}
+.vlive{display:none;max-height:52px;margin-bottom:6px;padding:6px 10px;border:1px dashed var(--g3);border-radius:8px;background:rgba(0,255,180,0.04);font-size:11px;color:var(--g);line-height:1.45;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .vlive.show{display:block}
 .vlive:empty::before{content:'Your speech will appear here as you talk…';color:rgba(0,255,180,0.25);font-style:italic}
 .vinp.listening{border-color:var(--g);box-shadow:0 0 0 1px rgba(0,255,180,0.2)}
 .brow{display:flex;gap:5px;flex-wrap:wrap}
 .vbtn{padding:5px 9px;border-radius:6px;border:1px solid var(--bd);background:transparent;color:var(--g);font-family:'Courier New',monospace;font-size:10px;cursor:pointer;transition:all 0.2s}
 .vbtn:hover{background:var(--g4)}.vbtn.on{background:rgba(0,255,180,0.14);border-color:var(--g)}
+.vbtn.wake-on{border-color:rgba(0,255,180,0.45);box-shadow:0 0 10px rgba(0,255,180,0.12)}
 .qs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px}
 .qb{padding:3px 7px;border-radius:20px;border:1px solid var(--bd);background:transparent;color:var(--g3);font-family:'Courier New',monospace;font-size:9px;cursor:pointer;white-space:nowrap;transition:all 0.2s}
 .qb:hover{color:var(--g);border-color:var(--g3);background:var(--g5)}
