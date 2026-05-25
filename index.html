@@ -37,7 +37,7 @@
       <div class="l-err" id="lerr"></div>
       <div class="l-ok" id="lok"></div>
     </div>
-    <div class="l-note">admin or super_admin · 2FA required · 15 min session</div>
+    <div class="l-note">admin or super_admin · 2FA required · 15 min idle timeout</div>
   </div>
 </div>
 
@@ -52,7 +52,7 @@
     <div class="tright">
       <div class="upill"><span class="udot"></span><span id="upill-txt">—</span></div>
       <div class="tclock" id="clk">--:--:--</div>
-      <button class="lout-btn" onclick="logout()">LOGOUT</button>
+      <button class="lout-btn" onclick="logout('manual')">LOGOUT</button>
     </div>
   </div>
 
@@ -79,7 +79,7 @@
     <div class="abar amber" id="a-partial">&#9651; PARTIAL DATA — some backend queries failed. Numbers may be incomplete.</div>
     <div class="abar red" id="a-health">&#9632; SYSTEM ALERT — backend health check failed.</div>
     <div class="abar red" id="a-stuck">&#9632; GUARDIAN — stuck transactions detected. Check the Guardian tab.</div>
-    <div class="abar amber" id="a-token">&#9651; SESSION — token expiring soon. Re-login to stay connected.</div>
+    <div class="abar amber" id="a-token">&#9651; SESSION — idle for 13 minutes. Interact or re-login within 2 minutes.</div>
   </div>
 
   <div class="bgrid">
@@ -220,7 +220,7 @@
       <div class="hd"><div class="hdl spin" id="h-cards"></div>CARDS</div>
       <div class="hd"><div class="hdl spin" id="h-sse"></div>SSE</div>
     </div>
-    <button class="rbtn" onclick="fetchAll({silent:true})">&#8635; REFRESH</button>
+    <button class="rbtn" onclick="fetchAll({silent:true,userAction:true})">&#8635; REFRESH</button>
   </div>
 </div>
 </div>

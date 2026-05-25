@@ -72,7 +72,7 @@ async function login() {
   }
 }
 
-function logout() {
+function logout(reason) {
   stopAlwaysListen();
   stopSpeak();
   tok = null; usr = null;
@@ -80,6 +80,7 @@ function logout() {
   metricsGreeted = false;
   warroomStatus = { enabled: true, webResearch: false, model: null };
   clearInterval(feedTmr);clearTimeout(sessTmr);clearTimeout(warnTmr);
+  hide('a-token');
   if(sseSrc){sseSrc.close();sseSrc=null;}
   Object.values(charts).forEach(c=>{try{c.destroy();}catch(e){}});
   charts = {};
@@ -88,7 +89,10 @@ function logout() {
   document.getElementById('lp').value='';
   document.getElementById('l2').value='';
   document.getElementById('lerr').textContent='';
-  document.getElementById('lok').textContent='Session ended.';
+  document.getElementById('lok').textContent = reason === 'idle'
+    ? 'Session ended after 15 minutes of inactivity.'
+    : reason === 'manual' ? 'Logged out.'
+    : 'Session ended.';
   document.getElementById('lbtn').disabled=false;
   setEl('feed','');
   renderToolResults(null);
@@ -127,6 +131,7 @@ function mk(id,type,labels,datasets,opts={}) {
 // Fetch All Data (silent: no voice — avoids cutting AI replies on refresh)
 async function fetchAll(opts = {}) {
   const silent = !!opts.silent;
+  if(opts.userAction) bumpSessionActivity();
   setEl('cpill','&#9675; FETCHING...');
   document.getElementById('cpill').className='cpill demo';
   const [ov,sw,gc,vc,tr,wa,us,he] = await Promise.allSettled([
@@ -403,16 +408,77 @@ function startSSE() {
   } catch(e){}
 }
 
-// Session Timers
+// Session — expires only after idle (no mouse, keyboard, or voice use)
+const SESSION_IDLE_MS = 15 * 60 * 1000;
+const SESSION_WARN_MS = 2 * 60 * 1000;
+let lastSessionBump = 0;
+
+function sessionIsBusy() {
+  return chatBusy || ttsActive || (listening && sttMode !== 'wake');
+}
+
+function scheduleIdleWarn() {
+  clearTimeout(warnTmr);
+  if(!tok) return;
+  warnTmr = setTimeout(() => {
+    if(!tok) return;
+    if(sessionIsBusy()) {
+      warnTmr = setTimeout(() => scheduleIdleWarn(), 60000);
+      return;
+    }
+    show('a-token');
+    if(!chatBusy && !ttsActive) speak('Session idle. You will be logged out in 2 minutes unless you interact.');
+  }, SESSION_IDLE_MS - SESSION_WARN_MS);
+}
+
+function scheduleIdleLogout() {
+  clearTimeout(sessTmr);
+  if(!tok) return;
+  sessTmr = setTimeout(() => {
+    if(!tok) return;
+    if(sessionIsBusy()) {
+      sessTmr = setTimeout(() => scheduleIdleLogout(), 60000);
+      return;
+    }
+    if(!chatBusy && !ttsActive) speak('Session ended due to inactivity.');
+    logout('idle');
+  }, SESSION_IDLE_MS);
+}
+
+function resetSessionIdleTimers() {
+  if(!tok) return;
+  hide('a-token');
+  scheduleIdleWarn();
+  scheduleIdleLogout();
+}
+
+function bumpSessionActivity() {
+  if(!tok) return;
+  const now = Date.now();
+  if(now - lastSessionBump < 1000) return;
+  lastSessionBump = now;
+  resetSessionIdleTimers();
+}
+
+function bindSessionIdleWatch() {
+  if(window._sessIdleBound) return;
+  window._sessIdleBound = true;
+  ['mousedown', 'keydown', 'touchstart', 'pointerdown', 'wheel'].forEach(ev => {
+    document.addEventListener(ev, bumpSessionActivity, { passive: true });
+  });
+  window.addEventListener('focus', bumpSessionActivity);
+}
+
 function startSessionTimers() {
-  clearTimeout(sessTmr);clearTimeout(warnTmr);
-  warnTmr = setTimeout(()=>{show('a-token');speak('Session expiring in 2 minutes. Please re-login.');},13*60*1000);
-  sessTmr = setTimeout(()=>{speak('Session expired. Logging out.');logout();},15*60*1000);
+  bindSessionIdleWatch();
+  lastSessionBump = 0;
+  resetSessionIdleTimers();
 }
 
 // Tab Switching
 let curTab = 'overview';
 function goTab(tab,el) {
+  bumpSessionActivity();
   curTab = tab;
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
@@ -783,6 +849,7 @@ function resumeWakeListen() {
 function liveEl() { return document.getElementById('vlive'); }
 
 function onWakeDetected(fullText, forced) {
+  bumpSessionActivity();
   if(wakeCooldown || chatBusy) return;
   if(!forced && sttMode !== 'wake') return;
   wakeCooldown = true;
@@ -797,6 +864,7 @@ function onWakeDetected(fullText, forced) {
 }
 
 function activateAssistant() {
+  bumpSessionActivity();
   if(chatBusy) return;
   stopSpeak();
   const heard = (document.getElementById('vinp')?.value || wakeBuffer || '').trim();
@@ -881,12 +949,15 @@ if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   recog.onresult = e => {
     if(ttsActive) return;
     let interim = '', final = '';
+    let hadSpeech = false;
     for(let i = e.resultIndex; i < e.results.length; i++) {
       const t = e.results[i][0]?.transcript;
       if(!t) continue;
+      hadSpeech = true;
       if(e.results[i].isFinal) final += t;
       else interim += t;
     }
+    if(hadSpeech) bumpSessionActivity();
     if(sttMode === 'wake') {
       if(final) wakeBuffer = (wakeBuffer + ' ' + final).trim().slice(-200);
       updateSttDisplay(interim);
@@ -931,6 +1002,7 @@ if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
 }
 
 function toggleMic() {
+  bumpSessionActivity();
   if(!recog) {
     setEl('vmsg', 'Voice needs Chrome on HTTPS.');
     speak('Use Chrome for voice input.', null, true);
@@ -1053,6 +1125,7 @@ function testSpeech() {
 
 async function ask(q, modeOverride) {
   if(!q?.trim()||chatBusy) return;
+  bumpSessionActivity();
   if(!tok) { setEl('vmsg','Session expired. Please log in again.'); return; }
   if(!warroomStatus.enabled) {
     setEl('vmsg', 'AI offline. Check warroom status.');
